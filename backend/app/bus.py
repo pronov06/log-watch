@@ -15,6 +15,7 @@ import asyncio
 import logging
 from collections import deque
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from app.models import Envelope
 
@@ -32,6 +33,9 @@ class EventBus:
 
     def __init__(self, ring_size: int = 2000):
         self._seq: int = 0
+        # Changes on every process start so clients can detect a restarted
+        # server (seq restarts at 0) and reset their since_seq cursor.
+        self.boot_id: str = uuid4().hex[:12]
         self._ring: deque[Envelope] = deque(maxlen=ring_size)
         self._alert_store: list[Envelope] = []
         self._subscribers: set[asyncio.Queue] = set()
@@ -94,6 +98,24 @@ class EventBus:
                 q.put_nowait(item)
             except asyncio.QueueFull:
                 break
+
+    def update_alert(self, alert_id: str, fields: dict) -> dict | None:
+        """
+        Patch a stored alert (ack, publish status) and broadcast an `alert_update`.
+
+        Updates every stored event of that alert so REST/poll reads stay consistent.
+        Returns the patch that was published, or None if the alert is unknown.
+        """
+        found = False
+        for env in self._alert_store:
+            if env.data.get("id") == alert_id:
+                env.data.update(fields)
+                found = True
+        if not found:
+            return None
+        patch = {"id": alert_id, **fields}
+        self.publish("alert_update", patch)
+        return patch
 
     def since(self, seq: int, max_items: int = 500) -> tuple[list[Envelope], int]:
         """

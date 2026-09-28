@@ -115,7 +115,7 @@ class Envelope(BaseModel):
     `seq` is a monotonically increasing integer used by polling (`?since_seq=`)
     and by clients to detect gaps.
     """
-    type: Literal["metric", "alert", "baseline", "log", "snapshot", "heartbeat", "config"] = "metric"
+    type: Literal["metric", "alert", "alert_update", "baseline", "log", "snapshot", "heartbeat", "config"] = "metric"
     seq: int = 0
     ts: str = ""
     data: dict = Field(default_factory=dict)

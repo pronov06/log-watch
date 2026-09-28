@@ -7,6 +7,8 @@ import {
   AppConfig,
   Envelope,
   SnapshotData,
+  PollResponse,
+  AlertPatch,
   ConnectionStatus,
 } from '../types';
 
@@ -29,6 +31,7 @@ export function useLiveFeed() {
   const [latestMetric, setLatestMetric] = useState<MetricPoint | null>(null);
 
   const lastSeqRef = useRef<number>(0);
+  const bootIdRef = useRef<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const wsFailuresRef = useRef<number>(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -66,16 +69,19 @@ export function useLiveFeed() {
   // Process any incoming envelope
   const processEnvelope = useCallback(
     (envelope: Envelope) => {
-      if (envelope.seq && envelope.seq <= lastSeqRef.current) {
-        return; // Ignore stale or duplicate
-      }
-      if (envelope.seq) {
+      // A snapshot always re-bases the cursor: after a server restart seq starts
+      // again from 0, and every later envelope would otherwise look stale.
+      if (envelope.type === 'snapshot') {
+        lastSeqRef.current = envelope.seq;
+      } else if (envelope.seq) {
+        if (envelope.seq <= lastSeqRef.current) return; // stale or duplicate
         lastSeqRef.current = envelope.seq;
       }
 
       switch (envelope.type) {
         case 'snapshot': {
           const snap = envelope.data as SnapshotData;
+          if (snap.boot_id) bootIdRef.current = snap.boot_id;
           if (snap.metrics) {
             setMetrics(snap.metrics.slice(-MAX_METRICS));
             if (snap.metrics.length > 0) {
@@ -118,6 +124,20 @@ export function useLiveFeed() {
           break;
         }
 
+        case 'alert_update': {
+          const patch = envelope.data as AlertPatch;
+          const apply = (list: Alert[]) =>
+            list.map((a) => (a.id === patch.id ? { ...a, ...patch } : a));
+          setAlerts(apply);
+          setActiveAlerts(apply);
+          break;
+        }
+
+        case 'baseline': {
+          setBaseline(envelope.data as BaselineState);
+          break;
+        }
+
         case 'log': {
           const line = envelope.data as LogLine;
           setLogs((prev) => {
@@ -141,21 +161,23 @@ export function useLiveFeed() {
     try {
       const res = await fetch(`/api/poll?since_seq=${lastSeqRef.current}`);
       if (!res.ok) throw new Error('Poll failed');
-      const data = await res.json();
-      if (Array.isArray(data.items)) {
-        for (const env of data.items) {
-          processEnvelope(env);
-        }
+      const data: PollResponse = await res.json();
+      if (!isMountedRef.current) return;
+      // Server restarted: its seq counter reset, so our cursor is meaningless.
+      // Rewind and let the next poll fetch everything the new process buffered.
+      if (bootIdRef.current && data.boot_id !== bootIdRef.current) {
+        bootIdRef.current = data.boot_id;
+        lastSeqRef.current = 0;
+        return;
       }
-      if (data.latest_seq) {
-        lastSeqRef.current = Math.max(lastSeqRef.current, data.latest_seq);
+      bootIdRef.current = data.boot_id;
+      for (const env of data.envelopes ?? []) {
+        processEnvelope(env);
       }
     } catch {
-      if (isMountedRef.current && connection === 'polling') {
-        // Continue polling silently
-      }
+      // Backend unreachable; the next interval retries.
     }
-  }, [connection, processEnvelope]);
+  }, [processEnvelope]);
 
   // Connect WebSocket
   const connectWs = useCallback(() => {
@@ -199,7 +221,7 @@ export function useLiveFeed() {
       };
 
       socket.onclose = () => {
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || wsRef.current !== socket) return;
         wsRef.current = null;
         wsFailuresRef.current += 1;
 

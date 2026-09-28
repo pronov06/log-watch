@@ -112,14 +112,10 @@ async def get_active_alerts(request: Request):
 @router.post("/alerts/{alert_id}/ack")
 async def ack_alert(alert_id: str, body: AckRequest, request: Request):
     """Acknowledge an alert."""
-    # Find the alert in the bus store and mark it
     bus = request.app.state.bus
-    for envelope in bus._alert_store:
-        if envelope.data.get("id") == alert_id:
-            envelope.data["acknowledged"] = True
-            envelope.data["acknowledged_by"] = body.by
-            return {"status": "ok", "alert_id": alert_id}
-    raise HTTPException(status_code=404, detail="Alert not found")
+    if bus.update_alert(alert_id, {"acknowledged": True, "acknowledged_by": body.by}) is None:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return {"status": "ok", "alert_id": alert_id}
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +134,7 @@ async def poll(request: Request, since_seq: int = 0):
     return {
         "envelopes": [e.model_dump() for e in envelopes],
         "latest_seq": latest,
+        "boot_id": bus.boot_id,
     }
 
 

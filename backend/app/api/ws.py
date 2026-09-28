@@ -52,6 +52,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "seq": bus.latest_seq,
             "ts": "",
             "data": {
+                "boot_id": bus.boot_id,
                 "metrics": bus.get_recent_metrics(minutes=5),
                 "active_alerts": bus.get_active_alerts(),
                 "baseline": pipeline.baseline.state(),

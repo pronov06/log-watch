@@ -83,13 +83,22 @@ export interface AppConfig {
 }
 
 export interface Envelope<T = unknown> {
-  type: 'snapshot' | 'metric' | 'alert' | 'log' | 'heartbeat' | 'pong';
+  type: 'snapshot' | 'metric' | 'alert' | 'alert_update' | 'baseline' | 'log' | 'heartbeat' | 'pong';
   seq: number;
   ts: string;
   data: T;
 }
 
+export type AlertPatch = Pick<Alert, 'id'> & Partial<Alert>;
+
+export interface PollResponse {
+  envelopes: Envelope[];
+  latest_seq: number;
+  boot_id: string;
+}
+
 export interface SnapshotData {
+  boot_id: string;
   metrics: MetricPoint[];
   active_alerts: Alert[];
   baseline: BaselineState;
