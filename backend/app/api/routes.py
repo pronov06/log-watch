@@ -61,27 +61,15 @@ async def health(request: Request):
         "publish_mode": cfg.publish_mode,
         "lines_read": pipeline.tailer.lines_read,
         "lines_dropped": pipeline.tailer.lines_dropped,
+        "publisher": app.state.dispatcher.stats() if getattr(app.state, "dispatcher", None) else None,
+        "cw_metrics": app.state.metrics_reporter.stats() if getattr(app.state, "metrics_reporter", None) else None,
     }
 
 
 @router.get("/config")
 async def get_config(request: Request):
     """Non-secret thresholds for the frontend (chart reference lines, etc.)."""
-    cfg = request.app.state.cfg
-    return {
-        "window_seconds": cfg.window_seconds,
-        "eval_interval_sec": cfg.eval_interval_sec,
-        "z_low": cfg.z_low,
-        "z_medium": cfg.z_medium,
-        "z_high": cfg.z_high,
-        "z_critical": cfg.z_critical,
-        "abs_rate_critical": cfg.abs_rate_critical,
-        "min_abs_rate": cfg.min_abs_rate,
-        "confirm_ticks": cfg.confirm_ticks,
-        "resolve_ticks": cfg.resolve_ticks,
-        "baseline_warmup_samples": cfg.baseline_warmup_samples,
-        "sim_enabled": cfg.enable_sim,
-    }
+    return request.app.state.cfg.public_config()
 
 
 # ---------------------------------------------------------------------------

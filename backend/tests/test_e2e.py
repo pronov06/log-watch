@@ -17,6 +17,7 @@ async def test_pipeline_e2e_anomaly_and_recovery(tmp_path):
     # Small warmup and intervals for fast deterministic test
     cfg = Settings(
         log_file_path=str(log_file),
+        baseline_path=str(tmp_path / "baseline.json"),
         tail_poll_interval_sec=0.05,
         window_seconds=2,
         eval_interval_sec=0.2,

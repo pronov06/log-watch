@@ -121,6 +121,8 @@ class Baseline:
             "std": round(self.std, 6),
             "samples": self.samples,
             "ready": self.ready,
+            "warmup_needed": self.warmup_samples,
+            "warmup_pct": 100.0 if self.ready else round(100.0 * self.samples / max(1, self.warmup_samples), 1),
             "upper_band": round(self.mean + self.z_low * self.std, 6),
             "lower_band": round(max(0.0, self.mean - self.z_low * self.std), 6),
         }

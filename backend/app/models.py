@@ -131,5 +131,7 @@ class BaselineState(BaseModel):
     std: float = 0.0
     samples: int = 0
     ready: bool = False
+    warmup_needed: int = 0
+    warmup_pct: float = 0.0
     upper_band: float = 0.0  # mean + z_low * std
     lower_band: float = 0.0  # max(0, mean - z_low * std)

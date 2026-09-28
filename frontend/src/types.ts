@@ -58,6 +58,7 @@ export interface BaselineState {
   mean: number;
   std: number;
   upper_band: number;
+  lower_band: number;
 }
 
 export interface LogLine {
@@ -78,6 +79,9 @@ export interface AppConfig {
   z_high: number;
   z_critical: number;
   abs_rate_critical: number;
+  confirm_ticks: number;
+  resolve_ticks: number;
+  baseline_warmup_samples: number;
   publish_mode: 'dry_run' | 'aws' | string;
   sim_enabled: boolean;
 }

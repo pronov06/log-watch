@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     baseline_alpha: float = 0.05
     baseline_min_std: float = 0.01
     freeze_baseline_during_alert: bool = True
+    baseline_path: str = "./data/baseline.json"
 
     # --- Detection thresholds ---
     z_low: float = 3.0
@@ -58,11 +59,34 @@ class Settings(BaseSettings):
     sns_topic_arn: str = ""
     sns_min_severity: str = "MEDIUM"
     aws_endpoint_url: str = ""
+    publish_max_retries: int = 3
+    publish_backoff_base_sec: float = 1.0
+    cw_metrics_enabled: bool = True
+    cw_metrics_interval_sec: float = 60.0
 
     # --- API ---
     cors_origins: str = "http://localhost:5173"
     ring_buffer_size: int = 2000
     enable_sim: bool = True
+
+    def public_config(self) -> dict:
+        """Non-secret settings the frontend needs (served by /api/config and the WS snapshot)."""
+        return {
+            "window_seconds": self.window_seconds,
+            "eval_interval_sec": self.eval_interval_sec,
+            "min_events_in_window": self.min_events_in_window,
+            "z_low": self.z_low,
+            "z_medium": self.z_medium,
+            "z_high": self.z_high,
+            "z_critical": self.z_critical,
+            "abs_rate_critical": self.abs_rate_critical,
+            "min_abs_rate": self.min_abs_rate,
+            "confirm_ticks": self.confirm_ticks,
+            "resolve_ticks": self.resolve_ticks,
+            "baseline_warmup_samples": self.baseline_warmup_samples,
+            "publish_mode": self.publish_mode,
+            "sim_enabled": self.enable_sim,
+        }
 
     @property
     def cors_origin_list(self) -> list[str]:

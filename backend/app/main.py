@@ -22,6 +22,7 @@ from app.bus import EventBus
 from app.config import Settings, get_settings
 from app.pipeline import Pipeline
 from app.publishers.dispatcher import Dispatcher
+from app.publishers.metrics import MetricsReporter
 
 # Configure logging
 logging.basicConfig(
@@ -46,9 +47,22 @@ async def lifespan(app: FastAPI):
     await pipeline.start()
 
     # Start the publisher dispatcher
-    dispatcher = Dispatcher(cfg, pipeline.alert_queue)
+    dispatcher = Dispatcher(cfg, pipeline.alert_queue, bus=bus)
     app.state.dispatcher = dispatcher
     dispatcher_task = asyncio.create_task(dispatcher.run(), name="dispatcher")
+
+    reporter: MetricsReporter | None = None
+    reporter_task = None
+    if cfg.publish_mode == "aws" and cfg.cw_metrics_enabled:
+        reporter = MetricsReporter(
+            region=cfg.aws_region,
+            endpoint_url=cfg.aws_endpoint_url,
+            interval_sec=cfg.cw_metrics_interval_sec,
+            open_alerts=lambda: len(pipeline.alert_manager.get_active_alerts()),
+        )
+        pipeline.metric_listeners.append(reporter.add)
+        reporter_task = asyncio.create_task(reporter.run(), name="cw_metrics")
+    app.state.metrics_reporter = reporter
 
     logger.info("=" * 60)
     logger.info("  Log Anomaly Detector started")
@@ -60,11 +74,16 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # Shutdown: stop producers first, then flush consumers so no alert is lost.
     logger.info("Shutting down...")
-    dispatcher.stop()
-    dispatcher_task.cancel()
     await pipeline.stop()
+    dispatcher.stop()
+    await asyncio.gather(dispatcher_task, return_exceptions=True)
+    await dispatcher.shutdown(timeout=5.0)
+    if reporter is not None:
+        reporter.stop()
+        reporter_task.cancel()
+        await reporter.flush()
     logger.info("Shutdown complete")
 
 

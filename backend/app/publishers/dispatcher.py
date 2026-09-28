@@ -2,16 +2,19 @@
 Publisher dispatcher — async queue worker that routes alerts to all configured publishers.
 
 Features:
-- asyncio.Queue consumption with a single worker task
-- Retry with exponential backoff (3 attempts: 1s, 2s, 4s) on throttling/network errors
+- Drains the queue in small batches so CloudWatch gets one PutLogEvents per burst
+- Retry with exponential backoff + jitter on any publisher exception
 - A failed publisher NEVER crashes the pipeline or blocks the UI
-- Each alert gets a publish_status field shown in the UI
+- Per-alert publish_status is pushed back to the bus (`alert_update`) so the UI shows it
+- shutdown() drains whatever is still queued before the process exits
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import time
 
 from app.config import Settings
 from app.models import Alert
@@ -21,8 +24,7 @@ from app.publishers.sns import SnsPublisher
 
 logger = logging.getLogger(__name__)
 
-MAX_RETRIES = 3
-BACKOFF_BASE = 1.0  # seconds
+MAX_BATCH = 50
 
 
 class Dispatcher:
@@ -33,12 +35,20 @@ class Dispatcher:
     publish_status, but never propagate.
     """
 
-    def __init__(self, cfg: Settings, alert_queue: asyncio.Queue):
+    def __init__(self, cfg: Settings, alert_queue: asyncio.Queue, bus=None):
         self.cfg = cfg
         self.alert_queue = alert_queue
+        self.bus = bus
         self.publishers: list[tuple[str, object]] = []
-        self.publish_failures: int = 0
+        self.max_retries = cfg.publish_max_retries
+        self.backoff_base = cfg.publish_backoff_base_sec
         self._running = False
+
+        # Health stats
+        self.published = 0
+        self.failures = 0
+        self.last_error: str | None = None
+        self.last_ok_at: float | None = None
 
         self._setup_publishers()
 
@@ -72,51 +82,80 @@ class Dispatcher:
 
         while self._running:
             try:
-                alert: Alert = await asyncio.wait_for(
-                    self.alert_queue.get(), timeout=5.0
-                )
+                first: Alert = await asyncio.wait_for(self.alert_queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
-            except asyncio.CancelledError:
-                break
+            batch = [first]
+            while len(batch) < MAX_BATCH and not self.alert_queue.empty():
+                batch.append(self.alert_queue.get_nowait())
+            await self._dispatch(batch)
 
-            await self._dispatch(alert)
+    async def shutdown(self, timeout: float = 5.0) -> None:
+        """Stop accepting work and flush anything still queued (bounded by timeout)."""
+        self._running = False
+        pending: list[Alert] = []
+        while not self.alert_queue.empty():
+            pending.append(self.alert_queue.get_nowait())
+        if not pending:
+            return
+        logger.info("Dispatcher flushing %d queued alert(s) before exit", len(pending))
+        try:
+            await asyncio.wait_for(self._dispatch(pending), timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.error("Dispatcher flush timed out; %d alert(s) may be unpublished", len(pending))
 
-    async def _dispatch(self, alert: Alert) -> None:
-        """Send an alert to all publishers with retry."""
-        status: dict[str, str] = {}
+    async def _dispatch(self, alerts: list[Alert]) -> None:
+        """Send alerts to every publisher; batch-capable publishers get one call."""
+        statuses: dict[str, dict[str, str]] = {a.id + a.event: {} for a in alerts}
 
         for name, publisher in self.publishers:
-            result = await self._publish_with_retry(name, publisher, alert)
-            status[name] = result
+            if hasattr(publisher, "publish_batch"):
+                result = await self._with_retry(name, lambda p=publisher: p.publish_batch(alerts))
+                for a in alerts:
+                    statuses[a.id + a.event][name] = result
+            else:
+                for a in alerts:
+                    result = await self._with_retry(name, lambda p=publisher, a=a: p.publish(a))
+                    statuses[a.id + a.event][name] = result
 
-        alert.publish_status = status
-        logger.debug("Publish status for %s: %s", alert.id[:8], status)
+        for a in alerts:
+            a.publish_status = statuses[a.id + a.event]
+            if self.bus is not None:
+                self.bus.update_alert(a.id, {"publish_status": a.publish_status})
+            logger.debug("Publish status for %s: %s", a.id[:8], a.publish_status)
 
-    async def _publish_with_retry(self, name: str, publisher, alert: Alert) -> str:
-        """Attempt to publish with exponential backoff retries."""
-        for attempt in range(MAX_RETRIES):
+    async def _with_retry(self, name: str, call) -> str:
+        """Run a publisher call with exponential backoff and full jitter."""
+        for attempt in range(self.max_retries):
             try:
-                result = await publisher.publish(alert)
+                result = await call()
+                if result == "ok":
+                    self.published += 1
+                    self.last_ok_at = time.time()
                 return result
             except Exception as exc:
-                self.publish_failures += 1
-                if attempt < MAX_RETRIES - 1:
-                    delay = BACKOFF_BASE * (2 ** attempt)
-                    logger.warning(
-                        "%s publish attempt %d failed, retrying in %.1fs: %s",
-                        name, attempt + 1, delay, exc,
-                    )
+                self.failures += 1
+                self.last_error = f"{name}: {exc}"[:200]
+                if attempt < self.max_retries - 1:
+                    delay = self.backoff_base * (2 ** attempt) * random.uniform(0.5, 1.5)
+                    logger.warning("%s publish attempt %d failed, retrying in %.1fs: %s",
+                                   name, attempt + 1, delay, exc)
                     await asyncio.sleep(delay)
                 else:
-                    logger.error(
-                        "%s publish failed after %d attempts: %s",
-                        name, MAX_RETRIES, exc,
-                    )
-                    return "failed"
-
+                    logger.error("%s publish failed after %d attempts: %s",
+                                 name, self.max_retries, exc)
         return "failed"
 
     def stop(self) -> None:
         """Signal the dispatcher to stop."""
         self._running = False
+
+    def stats(self) -> dict:
+        return {
+            "publishers": [name for name, _ in self.publishers],
+            "published": self.published,
+            "failures": self.failures,
+            "last_error": self.last_error,
+            "last_ok_at": self.last_ok_at,
+            "queued": self.alert_queue.qsize(),
+        }

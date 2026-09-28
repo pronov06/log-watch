@@ -56,17 +56,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 "metrics": bus.get_recent_metrics(minutes=5),
                 "active_alerts": bus.get_active_alerts(),
                 "baseline": pipeline.baseline.state(),
-                "config": {
-                    "window_seconds": cfg.window_seconds,
-                    "eval_interval_sec": cfg.eval_interval_sec,
-                    "z_low": cfg.z_low,
-                    "z_medium": cfg.z_medium,
-                    "z_high": cfg.z_high,
-                    "z_critical": cfg.z_critical,
-                    "abs_rate_critical": cfg.abs_rate_critical,
-                    "min_abs_rate": cfg.min_abs_rate,
-                    "sim_enabled": cfg.enable_sim,
-                },
+                "config": cfg.public_config(),
             },
         }
         await websocket.send_json(snapshot)

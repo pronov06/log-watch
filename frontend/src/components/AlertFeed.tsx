@@ -16,6 +16,7 @@ import {
   Check,
   Filter,
   AlertTriangle,
+  Terminal,
 } from 'lucide-react';
 
 interface AlertFeedProps {
@@ -188,25 +189,15 @@ export const AlertFeed: React.FC<AlertFeedProps> = ({ alerts, onAcknowledge }) =
 
                 {/* Footer: Publisher Delivery Status & Ack */}
                 <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-xs">
-                  {/* Publishers Status */}
+                  {/* Publishers Status (real per-publisher result from the dispatcher) */}
                   <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                    <div
-                      className="flex items-center gap-1"
-                      title={`CloudWatch: ${alert.publish_status?.cloudwatch ?? 'ok'}`}
-                    >
-                      <Cloud className="w-3 h-3 text-sky-400" />
-                      <span>CW</span>
-                      <span className="text-emerald-400 font-bold">✓</span>
-                    </div>
-
-                    <div
-                      className="flex items-center gap-1"
-                      title={`SNS: ${alert.publish_status?.sns ?? 'ok'}`}
-                    >
-                      <Mail className="w-3 h-3 text-indigo-400" />
-                      <span>SNS</span>
-                      <span className="text-emerald-400 font-bold">✓</span>
-                    </div>
+                    {Object.keys(alert.publish_status ?? {}).length === 0 ? (
+                      <span className="text-amber-400/80">publishing…</span>
+                    ) : (
+                      Object.entries(alert.publish_status).map(([name, status]) => (
+                        <PublishBadge key={name} name={name} status={status} />
+                      ))
+                    )}
                   </div>
 
                   {/* Acknowledge Button */}
@@ -230,6 +221,30 @@ export const AlertFeed: React.FC<AlertFeedProps> = ({ alerts, onAcknowledge }) =
           })
         )}
       </div>
+    </div>
+  );
+};
+
+const PUBLISHER_LABELS: Record<string, { label: string; Icon: typeof Cloud }> = {
+  cloudwatch: { label: 'CW', Icon: Cloud },
+  sns: { label: 'SNS', Icon: Mail },
+  console: { label: 'LOCAL', Icon: Terminal },
+};
+
+const STATUS_MARK: Record<string, { mark: string; cls: string }> = {
+  ok: { mark: '✓', cls: 'text-emerald-400' },
+  failed: { mark: '✗', cls: 'text-rose-400' },
+  skipped: { mark: '–', cls: 'text-slate-500' },
+};
+
+const PublishBadge: React.FC<{ name: string; status: string }> = ({ name, status }) => {
+  const { label, Icon } = PUBLISHER_LABELS[name] ?? { label: name.toUpperCase(), Icon: Cloud };
+  const { mark, cls } = STATUS_MARK[status] ?? { mark: '?', cls: 'text-amber-400' };
+  return (
+    <div className="flex items-center gap-1" title={`${name}: ${status}`}>
+      <Icon className="w-3 h-3 text-sky-400" />
+      <span>{label}</span>
+      <span className={`${cls} font-bold`}>{mark}</span>
     </div>
   );
 };

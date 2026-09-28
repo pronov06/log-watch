@@ -66,7 +66,7 @@ class Pipeline:
             alpha=cfg.baseline_alpha,
             min_std=cfg.baseline_min_std,
             z_low=cfg.z_low,
-            persist_path="./data/baseline.json",
+            persist_path=cfg.baseline_path,
         )
         self.detector = Detector(cfg)
         self.alert_manager = AlertManager(cfg, window_seconds=cfg.window_seconds)
@@ -90,6 +90,9 @@ class Pipeline:
 
         # Publisher queue (filled by the pipeline, consumed by the dispatcher)
         self.alert_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
+
+        # Synchronous hooks called with every metric point (e.g. CloudWatch metrics buffer)
+        self.metric_listeners: list = []
 
     async def start(self) -> None:
         """Start all pipeline tasks."""
@@ -206,6 +209,8 @@ class Pipeline:
                 }
 
                 self.bus.publish("metric", metric_data)
+                for listener in self.metric_listeners:
+                    listener(metric_data)
                 self.bus.publish("baseline", baseline_state)
 
                 # Process alerts
