@@ -28,7 +28,7 @@ from app.config import Settings
 from app.detector import Detector
 from app.models import Severity
 from app.parser import parse_line
-from app.tailer import Tailer
+from app.tailer import MultiTailer
 from app.window import SlidingWindow
 
 logger = logging.getLogger(__name__)
@@ -73,11 +73,11 @@ class Pipeline:
 
         # Tailer → parser queue
         self._line_queue: asyncio.Queue = asyncio.Queue(maxsize=10_000)
-        self.tailer = Tailer(
-            path=cfg.log_file_path,
+        self.tailer = MultiTailer(
+            patterns=cfg.source_patterns,
             queue=self._line_queue,
             poll_interval=cfg.tail_poll_interval_sec,
-            from_start=False,
+            rescan_interval=cfg.source_rescan_sec,
         )
 
         # Tasks

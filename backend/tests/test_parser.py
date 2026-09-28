@@ -117,3 +117,60 @@ class TestEdgeCases:
         event = parse_line(line, fmt="text")
         assert event is not None
         assert event.raw == line
+
+
+# --- real-world formats -----------------------------------------------------
+
+from datetime import datetime, timezone  # noqa: E402
+
+
+class TestRealWorldFormats:
+    def test_python_logging_default_layout(self):
+        e = parse_line("2026-09-28 10:15:03,412 ERROR app.db: connection reset by peer")
+        assert (e.level, e.service, e.message) == ("ERROR", "app.db", "connection reset by peer")
+        assert e.ts == datetime(2026, 9, 28, 10, 15, 3, 412000, tzinfo=timezone.utc)
+
+    def test_python_logging_dash_layout(self):
+        e = parse_line("2026-09-28 10:15:03,412 - payments.api - WARNING - slow query 812ms")
+        assert (e.level, e.service, e.message) == ("WARNING", "payments.api", "slow query 812ms")
+
+    def test_bracketed_level(self):
+        e = parse_line("2026-09-28T10:15:03Z [CRITICAL] disk full")
+        assert e.level == "ERROR" and e.message == "disk full"
+
+    def test_timezone_offset_converted_to_utc(self):
+        e = parse_line("2026-09-28T15:45:03+05:30 ERROR boom")
+        assert e.ts == datetime(2026, 9, 28, 10, 15, 3, tzinfo=timezone.utc)
+
+    def test_nginx_combined_5xx_is_error(self):
+        line = '10.0.0.1 - - [28/Sep/2026:10:15:03 +0000] "GET /api/pay?id=7 HTTP/1.1" 502 157 "-" "curl/8.0"'
+        e = parse_line(line)
+        assert (e.level, e.service, e.message) == ("ERROR", "http", "GET /api/pay 502")
+        assert e.ts == datetime(2026, 9, 28, 10, 15, 3, tzinfo=timezone.utc)
+
+    def test_nginx_4xx_warning_2xx_info(self):
+        base = '1.2.3.4 - bob [28/Sep/2026:10:15:03 +0000] "POST /login HTTP/1.1" {} 0'
+        assert parse_line(base.format(404)).level == "WARNING"
+        assert parse_line(base.format(200), fmt="nginx").level == "INFO"
+
+    def test_syslog_5424_priority_level(self):
+        e = parse_line("<11>1 2026-09-28T10:15:03.412Z web01 sshd 812 - - auth failure")
+        assert (e.level, e.service, e.message) == ("ERROR", "sshd", "auth failure")  # 11 % 8 = 3 (err)
+
+    def test_syslog_3164_keyword_level(self):
+        e = parse_line("Sep 28 10:15:03 web01 kernel: nfs: server not responding, timed out")
+        assert (e.level, e.service) == ("WARNING", "kernel")
+        e = parse_line("Sep  8 10:15:03 web01 app[99]: payment failed for order 7")
+        assert (e.level, e.service) == ("ERROR", "app")
+
+    def test_syslog_3164_with_pri(self):
+        e = parse_line("<14>Sep 28 10:15:03 web01 cron[1]: job done")
+        assert e.level == "INFO"
+
+    def test_ecs_json(self):
+        line = '{"@timestamp":"2026-09-28T10:15:03Z","log":{"level":"error"},"service":{"name":"cart"},"message":"x"}'
+        e = parse_line(line)
+        assert (e.level, e.service, e.message) == ("ERROR", "cart", "x")
+
+    def test_json_array_is_not_an_event(self):
+        assert parse_line("[1, 2, 3]", fmt="json") is None

@@ -24,6 +24,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from app import parser
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
@@ -61,6 +63,8 @@ async def health(request: Request):
         "publish_mode": cfg.publish_mode,
         "lines_read": pipeline.tailer.lines_read,
         "lines_dropped": pipeline.tailer.lines_dropped,
+        "sources": pipeline.tailer.files,
+        "parse_failures": parser.parse_failures,
         "publisher": app.state.dispatcher.stats() if getattr(app.state, "dispatcher", None) else None,
         "cw_metrics": app.state.metrics_reporter.stats() if getattr(app.state, "metrics_reporter", None) else None,
     }

@@ -24,8 +24,12 @@ class Settings(BaseSettings):
 
     # --- Input ---
     log_file_path: str = "./data/app.log"
-    log_format: Literal["auto", "text", "json"] = "auto"
+    # Comma-separated files and/or globs (e.g. "/var/log/nginx/*.log,/var/log/app/*.jsonl").
+    # Empty → tail LOG_FILE_PATH only.
+    log_sources: str = ""
+    log_format: Literal["auto", "text", "json", "python", "nginx", "syslog"] = "auto"
     tail_poll_interval_sec: float = 0.2
+    source_rescan_sec: float = 2.0
 
     # --- Windowing ---
     window_seconds: int = 60
@@ -91,6 +95,11 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def source_patterns(self) -> list[str]:
+        patterns = [p.strip() for p in self.log_sources.split(",") if p.strip()]
+        return patterns or [self.log_file_path]
 
     @property
     def log_path(self) -> Path:
