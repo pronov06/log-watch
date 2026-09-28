@@ -201,12 +201,7 @@ class Pipeline:
                     self._breach_started = tick_at
                 elif not breaching and not self.alert_manager.has_open_alert():
                     self._breach_started = None
-                if (
-                    reliable
-                    and self.baseline.ready
-                    and not breaching
-                    and not self.alert_manager.has_open_alert()
-                ):
+                if self._should_update_baseline(reliable, breaching):
                     self.baseline.update(snap["error_rate"])
 
                 # Build metric point for the bus
@@ -249,6 +244,21 @@ class Pipeline:
                 break
             except Exception:
                 logger.exception("Evaluator error")
+
+    def _should_update_baseline(self, reliable: bool, breaching: bool) -> bool:
+        """
+        Only calm, statistically reliable samples may teach the baseline what "normal" is.
+
+        Breaching samples never do. With FREEZE_BASELINE_DURING_ALERT (default) the
+        baseline also stays frozen until the alert resolves: the calm-looking ticks inside
+        an incident (e.g. a dip between two bursts) would otherwise drag the mean up and
+        make the rest of the incident look normal (baseline poisoning).
+        """
+        if not (reliable and self.baseline.ready) or breaching:
+            return False
+        if self.cfg.freeze_baseline_during_alert and self.alert_manager.has_open_alert():
+            return False
+        return True
 
     def _lag_pct(self, q: float) -> float | None:
         if not self._lags:

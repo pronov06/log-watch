@@ -83,6 +83,8 @@ async def test_pipeline_e2e_anomaly_and_recovery(tmp_path):
                     resolved = True
 
         assert resolved, "Expected RESOLVED alert after recovery"
+        # Warm-up traffic was 5% errors; the 90% spike must not have poisoned the baseline.
+        assert pipeline.baseline.mean < 0.10, pipeline.baseline.mean
 
     finally:
         bus.unsubscribe(queue)
@@ -110,3 +112,18 @@ def test_json_log_formatter_emits_fields():
     rec = logging.makeLogRecord({"name": "t", "levelname": "INFO", "msg": "hi %s", "args": ("x",), "alert_id": "a1"})
     out = json.loads(JsonFormatter().format(rec))
     assert out["msg"] == "hi x" and out["alert_id"] == "a1" and out["ts"].endswith("Z")
+
+
+@pytest.mark.parametrize("freeze,open_alert,breaching,reliable,expected", [
+    (True, False, False, True, True),    # calm, reliable → learn
+    (True, False, True, True, False),    # breaching samples never teach the baseline
+    (True, False, False, False, False),  # too few events in window
+    (True, True, False, True, False),    # frozen while an alert is open
+    (False, True, False, True, True),    # freeze disabled → calm ticks still learn
+])
+def test_baseline_update_policy(tmp_path, freeze, open_alert, breaching, reliable, expected):
+    cfg = Settings(freeze_baseline_during_alert=freeze, baseline_path=str(tmp_path / "b.json"))
+    pipeline = Pipeline(cfg, EventBus())
+    pipeline.baseline.ready = True
+    pipeline.alert_manager.has_open_alert = lambda key="error_rate:global": open_alert
+    assert pipeline._should_update_baseline(reliable, breaching) is expected
