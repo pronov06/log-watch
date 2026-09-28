@@ -99,6 +99,10 @@ if __name__ == "__main__":
         demo.launch(
             server_name=os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0"),
             app_kwargs={"lifespan": run_backend},
+            # On Spaces, Gradio's server-side rendering puts a Node server on the public port
+            # and proxies only Gradio's own paths to Python, so our dashboard and API would
+            # never be reached. Without SSR, the Python server (with our routes) owns the port.
+            ssr_mode=False,
             prevent_thread_lock=True,
         )
         attach_backend(demo.server_app)
