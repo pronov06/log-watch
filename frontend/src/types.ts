@@ -50,9 +50,19 @@ export interface MetricPoint {
   z: number | null;
   severity: Severity;
   ingest_lag_ms_p95: number | null;
+  baseline_source: BaselineSource | null;
+  fast_error_rate: number | null;
+  fast_z: number | null;
+  triggered_by: string | null;
 }
 
+export type BaselineSource = 'rolling' | 'seasonal';
+
 export interface BaselineState {
+  method: string;
+  source: BaselineSource;
+  seasonal_days?: number;
+  seasonal_min_days?: number;
   ready: boolean;
   samples: number;
   warmup_needed: number;
@@ -73,8 +83,12 @@ export interface LogLine {
 
 export interface AppConfig {
   window_seconds: number;
+  fast_window_seconds: number;
+  fast_min_severity: Severity;
   eval_interval_sec: number;
   min_events_in_window: number;
+  baseline_method: 'mad' | 'ewma';
+  seasonal_enabled: boolean;
   min_abs_rate: number;
   z_low: number;
   z_medium: number;

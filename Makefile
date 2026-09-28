@@ -1,10 +1,14 @@
-.PHONY: smoke test test-backend dev-backend dev-frontend dev-sim up down build sim-spike aws-setup
+.PHONY: benchmark smoke test test-backend dev-backend dev-frontend dev-sim up down build sim-spike aws-setup
 
 PYTHON ?= python
 NPM ?= npm
 
 test:
 	cd backend && $(PYTHON) -m pytest -v
+
+# Detector comparison (baselines x window strategies, fake incidents), ~3 min
+benchmark:
+	cd backend && $(PYTHON) -m benchmark.run
 
 # Live E2E: real backend + generator + WebSocket, ~1 min, exits non-zero on failure
 smoke:

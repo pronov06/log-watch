@@ -72,6 +72,7 @@ class AlertManager:
         result: DetectionResult | None,
         key: str = "error_rate:global",
         top_errors: list[dict] | None = None,
+        now: float | None = None,
     ) -> list[Alert]:
         """
         Process one evaluation tick and return any alert events to emit.
@@ -84,8 +85,8 @@ class AlertManager:
 
         state = self._get_state(key)
         events: list[Alert] = []
-        now = time.time()
-        now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        now = time.time() if now is None else now  # injectable for replay/benchmarks
+        now_iso = datetime.fromtimestamp(now, timezone.utc).isoformat().replace("+00:00", "Z")
         breaching = result.breaching
 
         if state.status == "IDLE" or state.status == "COOLDOWN":
@@ -118,7 +119,7 @@ class AlertManager:
                         baseline_mean=result.baseline_mean,
                         baseline_std=result.baseline_std,
                         z_score=result.z,
-                        window_seconds=self.window_seconds,
+                        window_seconds=result.window_seconds or self.window_seconds,
                         window_total=result.window_total,
                         window_errors=result.window_errors,
                         top_errors=top_errors or [],
@@ -153,7 +154,7 @@ class AlertManager:
                         baseline_mean=result.baseline_mean,
                         baseline_std=result.baseline_std,
                         z_score=result.z,
-                        window_seconds=self.window_seconds,
+                        window_seconds=result.window_seconds or self.window_seconds,
                         window_total=result.window_total,
                         window_errors=result.window_errors,
                         top_errors=top_errors or [],
@@ -192,7 +193,7 @@ class AlertManager:
                         baseline_mean=result.baseline_mean,
                         baseline_std=result.baseline_std,
                         z_score=result.z,
-                        window_seconds=self.window_seconds,
+                        window_seconds=result.window_seconds or self.window_seconds,
                         window_total=result.window_total,
                         window_errors=result.window_errors,
                         top_errors=top_errors or [],
@@ -228,4 +229,5 @@ class AlertManager:
         """Generate a human-readable alert title."""
         rate_pct = f"{result.rate * 100:.1f}%"
         baseline_pct = f"{result.baseline_mean * 100:.1f}%"
-        return f"Error rate spike: {rate_pct} (baseline {baseline_pct})"
+        window = f" over {result.window_seconds}s" if result.window_seconds else ""
+        return f"Error rate spike: {rate_pct}{window} (baseline {baseline_pct})"

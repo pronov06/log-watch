@@ -34,7 +34,9 @@ BASE = f"http://127.0.0.1:{PORT}"
 
 # Fast timings so the whole run takes ~1 minute
 TUNING = {
-    "WINDOW_SECONDS": "10",
+    # Dual-window like production, scaled down: 30 s main window + 10 s fast path
+    "WINDOW_SECONDS": "30",
+    "FAST_WINDOW_SECONDS": "10",
     "EVAL_INTERVAL_SEC": "1",
     "BASELINE_WARMUP_SAMPLES": "5",
     "MIN_EVENTS_IN_WINDOW": "10",
@@ -102,12 +104,13 @@ async def run(tmp: Path) -> dict:
             latency = round(time.monotonic() - t0, 2)
             results["alert_latency_sec"] = latency
             results["severity"] = opened["severity"]
+            results["opened_by_window_sec"] = opened["window_seconds"]
             results["detection_latency_sec"] = opened.get("detection_latency_sec")
             log(f"OPENED {opened['severity']} z={opened['z_score']} rate={opened['error_rate']} "
                 f"after {latency}s (budget {LATENCY_BUDGET}s)")
             assert latency <= LATENCY_BUDGET, f"alert latency {latency}s > budget {LATENCY_BUDGET}s"
 
-            cfg = Settings(**{k.lower(): v for k, v in TUNING.items()})
+            cfg = Settings(_env_file=None, **{k.lower(): v for k, v in TUNING.items()})
             expected = classify_severity(opened["z_score"], opened["error_rate"], cfg).name
             assert opened["severity"] == expected, f"severity {opened['severity']} != expected {expected}"
             assert opened["severity"] in ("MEDIUM", "HIGH", "CRITICAL"), "60% error spike should be >= MEDIUM"

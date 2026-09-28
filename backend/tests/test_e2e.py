@@ -122,8 +122,8 @@ def test_json_log_formatter_emits_fields():
     (False, True, False, True, True),    # freeze disabled → calm ticks still learn
 ])
 def test_baseline_update_policy(tmp_path, freeze, open_alert, breaching, reliable, expected):
-    cfg = Settings(freeze_baseline_during_alert=freeze, baseline_path=str(tmp_path / "b.json"))
+    cfg = Settings(freeze_baseline_during_alert=freeze, seasonal_enabled=False, baseline_path=str(tmp_path / "b.json"))
     pipeline = Pipeline(cfg, EventBus())
     pipeline.baseline.ready = True
     pipeline.alert_manager.has_open_alert = lambda key="error_rate:global": open_alert
-    assert pipeline._should_update_baseline(reliable, breaching) is expected
+    assert pipeline.evaluator.should_update_baseline(reliable, breaching) is expected

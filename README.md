@@ -1,6 +1,6 @@
 # Accentra — Real-Time Log Anomaly Detector
 
-> **Python (FastAPI) + React (TypeScript + Vite)** observability service. It tails live log files (your real ones or a built-in traffic generator), computes a rolling error rate over a sliding window, learns a baseline with EWMA, detects deviations with z-scores and assigns a severity. Alerts stream to the browser over WebSocket (with polling fallback) and are published to **AWS CloudWatch Logs, SNS and CloudWatch Metrics/Alarms**.
+> **Python (FastAPI) + React (TypeScript + Vite)** observability service. It tails live log files (your real ones or a built-in traffic generator), computes rolling error rates over a dual sliding window, learns a robust baseline (median/MAD, plus a same-time-of-day profile), scores deviations and assigns a severity. Alerts stream to the browser over WebSocket (with polling fallback) and are published to **AWS CloudWatch Logs, SNS and CloudWatch Metrics/Alarms**.
 
 Measured on a laptop with the live smoke test (`make smoke`): **alert on the dashboard 1.6 s after an error spike starts** (budget 4 s with 1 s evaluation), **ingest lag p95 ≈ 110 ms** from a line being written to it being analysed.
 
@@ -63,6 +63,46 @@ Formats are auto-detected per line (`LOG_FORMAT=auto`), so one instance can foll
 
 ---
 
+## 🧠 How detection works (and why these defaults)
+
+These choices come from our mentor review and were verified with a benchmark (`make benchmark`, results in [docs/detector-benchmark.md](docs/detector-benchmark.md)). The benchmark:
+
+- synthesises 5 days of traffic with a daily pattern, noise and short self-healing blips;
+- injects 36 incidents (spikes, moderate rises, slow ramps) at known times;
+- replays everything through the same detector code as the live service;
+- counts how fast each configuration caught every incident and how many false alarms it raised.
+
+**1. Median/MAD instead of mean/std.** The error rate is mostly low with sudden spikes, not a bell curve.
+- A mean and standard deviation are dragged along by the very thing we want to detect. In the benchmark, an EWMA baseline "learned" slow ramps while they built up and missed up to ⅔ of the incidents.
+- The median and MAD (scaled ×1.4826 to be comparable with σ) over the last 30 min of calm samples caught 36/36.
+- Safeguards:
+  - `BASELINE_MIN_STD` stops a flat or all-zero history from giving a zero MAD, which would make any blip "infinite".
+  - `MIN_ABS_RATE` requires at least 5% errors before alerting.
+  - `MIN_EVENTS_IN_WINDOW` skips windows with too few requests (1 error in 3 requests is not "33%").
+  - A sampling-noise floor √(p(1−p)/n) keeps small-n noise from looking anomalous.
+
+**2. Window size: 60 s vs 5 min, so we use both.** At 30 req/s (pooled over 36 incidents):
+
+| Strategy | Spike caught after | Median (all incidents) | False alarms/day |
+|---|---|---|---|
+| 60 s window | 12 s | 27.5 s | 3.7 (self-healing blips) |
+| 5 min window | 35.5 s | 100 s | 0 |
+| **5 min + 60 s fast path (default)** | **20.5 s** | **47.5 s** | **0.2** |
+
+- The 5-minute window (`WINDOW_SECONDS`) alerts at any severity.
+- The 60-second window (`FAST_WINDOW_SECONDS`) may only alert at ≥ HIGH, so big spikes still open an alert within seconds while short blips never qualify.
+- Each window has its own baseline. Alert cards show which window fired, e.g. "over 60s".
+- With very low traffic (≈2 req/s) 60 s windows are too noisy (up to 34 false alarms/day in the benchmark). Keep the 5-minute window, or set `FAST_WINDOW_SECONDS=0` and `EVAL_INTERVAL_SEC=60`.
+
+**3. Rolling baseline plus a same-hour baseline.** Recurring busy or error-prone hours are normal, and a single rolling baseline flags them every day. `SEASONAL_ENABLED=true` compares "now" with the same time on previous days:
+- It uses a ±15 min tolerance.
+- It combines days with lower medians, so one bad day can't make an incident look normal.
+- It needs `SEASONAL_MIN_DAYS=3` days of history and uses the rolling baseline until then.
+
+In the benchmark it took the nightly-batch/morning-peak false alarms from ~1/day to 0 in every window strategy. The dashboard shows which reference is active ("rolling · same-hour after 1/3 days" or "vs same time on past days"). Run the generator with `--daily-pattern` to produce the same recurring pattern the benchmark uses.
+
+---
+
 ## ☁️ AWS (CloudWatch Logs, SNS, Metrics, Alarms)
 
 `PUBLISH_MODE=dry_run` (default) prints alerts locally, so no AWS account is needed. For real publishing:
@@ -108,9 +148,9 @@ flowchart TD
     end
     subgraph Backend [FastAPI :8000]
         TAILER[MultiTailer<br/>byte offsets, rotation, globs] --> PARSER[Parser<br/>JSON · kv · python · nginx · syslog]
-        PARSER --> WINDOW[Sliding window<br/>1 s buckets]
-        WINDOW -->|every EVAL_INTERVAL| BASELINE[EWMA baseline<br/>warm-up · std floor · freeze]
-        BASELINE --> DETECTOR[Z-score + abs-rate gate<br/>→ severity]
+        PARSER --> WINDOW[Sliding window<br/>1 s buckets · 5 min main + 60 s fast]
+        WINDOW -->|every EVAL_INTERVAL| BASELINE[Baseline per window<br/>median/MAD · same-hour profile · floors · freeze]
+        BASELINE --> DETECTOR[Robust z + abs-rate gate<br/>→ severity · fast path only if ≥ HIGH]
         DETECTOR --> ALERTS[Alert manager<br/>confirm · escalate · resolve · cooldown]
         ALERTS --> BUS[Event bus<br/>seq + boot_id ring buffer]
         ALERTS --> DISPATCH[Dispatcher<br/>batch · retry+jitter · flush]
@@ -139,9 +179,12 @@ Invalid values stop the process at startup with a readable message, for example 
 | `LOG_FILE_PATH` | `./data/app.log` | Primary log file (the simulator writes here) |
 | `LOG_SOURCES` | *(empty)* | Extra files/globs, comma-separated |
 | `LOG_FORMAT` | `auto` | `auto`, `text`, `json`, `python`, `nginx`, `syslog` |
-| `WINDOW_SECONDS` / `EVAL_INTERVAL_SEC` | `60` / `5` | Sliding window length / evaluation cadence |
+| `WINDOW_SECONDS` / `EVAL_INTERVAL_SEC` | `300` / `5` | Main window (alerts at any severity) / evaluation cadence |
+| `FAST_WINDOW_SECONDS` / `FAST_MIN_SEVERITY` | `60` / `HIGH` | Fast window that may only alert when severe; `0` = single window |
 | `MIN_EVENTS_IN_WINDOW` | `20` | Skip evaluation on sparse traffic (no 1-of-2 = 50 % false alarms) |
-| `BASELINE_WARMUP_SAMPLES` / `BASELINE_ALPHA` / `BASELINE_MIN_STD` | `24` / `0.05` / `0.01` | Warm-up, EWMA smoothing, std floor |
+| `BASELINE_METHOD` / `BASELINE_HISTORY_SEC` | `mad` / `1800` | `mad` (median ± scaled MAD) or `ewma`; rolling history length |
+| `BASELINE_WARMUP_SAMPLES` / `BASELINE_ALPHA` / `BASELINE_MIN_STD` | `24` / `0.05` / `0.01` | Warm-up, EWMA smoothing (ewma only), scale floor |
+| `SEASONAL_ENABLED` / `SEASONAL_MIN_DAYS` / `SEASONAL_TOLERANCE_SLOTS` | `true` / `3` / `3` | Same-time-of-day baseline, days needed, ±slots (5 min each) |
 | `BASELINE_PATH` | `./data/baseline.json` | Persisted baseline (restarts skip warm-up) |
 | `Z_LOW` / `Z_MEDIUM` / `Z_HIGH` / `Z_CRITICAL` | `3 / 4.5 / 6.5 / 9` | Severity boundaries |
 | `MIN_ABS_RATE` / `ABS_RATE_CRITICAL` | `0.05` / `0.50` | Absolute floor / always-critical rate |
@@ -170,14 +213,15 @@ Invalid values stop the process at startup with a readable message, for example 
 ## 🧪 Testing
 
 ```bash
-cd backend && python -m pytest -q      # 117 unit/integration tests (~20 s), AWS via moto
+cd backend && python -m pytest -q      # 143 unit/integration tests (~20 s), AWS via moto
 python scripts/smoke_realtime.py       # live E2E: real server + generator + WebSocket (~1 min)
+cd backend && python -m benchmark.run  # detector comparison → docs/detector-benchmark.md (~3 min)
 ```
 
 What the tests cover:
 - **Parser:** every format, plus timezone handling.
 - **Tailer:** CRLF and split UTF-8, rename rotation, truncation, late-created files, glob discovery.
-- **Detection logic:** window, baseline, detector and alert lifecycle.
+- **Detection logic:** window and sub-windows, median/MAD and EWMA baselines, the same-hour profile (majority across days, tolerance, persistence), dual-window detection, detector and alert lifecycle.
 - **Event bus:** restart `boot_id`, `alert_update`, backpressure.
 - **Publishers:** CloudWatch Logs batching and stream re-creation, SNS severity filter, retries, publish status, shutdown flush, metrics.
 - **Simulator scenarios.**
@@ -201,5 +245,7 @@ The smoke test asserts:
 ## Known limitations
 
 - A single global error-rate detector. Per-service breakdown and volume anomalies are not implemented, although the `flood` scenario raises volume ×10.
+- The same-hour baseline needs 3 days of history, so it is inactive in a fresh demo (the dashboard says so). Its benefit is demonstrated by the benchmark rather than live.
+- The benchmark uses synthetic traffic. Treat its numbers as a comparison between strategies, not a promise about production.
 - The event bus is in-memory: alert history is kept for the life of the process. Durable history lives in CloudWatch Logs.
 - RFC 3164 syslog has no year or zone, so UTC and the current year are assumed. Naive timestamps are treated as UTC for the ingest-lag metric.

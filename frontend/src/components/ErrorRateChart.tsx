@@ -26,6 +26,9 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
   alerts,
   config,
 }) => {
+  const mainWindow = config?.window_seconds ?? 60;
+  const fastWindow = config?.fast_window_seconds ?? 0;
+
   // Format data points for recharts
   const chartData = useMemo(() => {
     return metrics.map((m) => {
@@ -34,6 +37,7 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
         ...m,
         timeStr,
         ratePct: Number((m.error_rate * 100).toFixed(2)),
+        fastRatePct: m.fast_error_rate != null ? Number((m.fast_error_rate * 100).toFixed(2)) : null,
         upperBandPct: m.upper_band !== null ? Number((m.upper_band * 100).toFixed(2)) : null,
         baselineMeanPct: m.baseline_mean !== null ? Number((m.baseline_mean * 100).toFixed(2)) : null,
       };
@@ -65,6 +69,7 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
     let max = 10;
     chartData.forEach((d) => {
       if (d.ratePct > max) max = d.ratePct;
+      if (d.fastRatePct && d.fastRatePct > max) max = d.fastRatePct;
       if (d.upperBandPct && d.upperBandPct > max) max = d.upperBandPct;
     });
     return Math.min(100, Math.ceil(max * 1.25));
@@ -79,14 +84,20 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
         <div className="flex items-center gap-2">
           <ChartIcon className="w-4 h-4 text-sky-400" />
           <h2 className="text-sm font-semibold tracking-wide text-slate-200">
-            Real-Time Error Rate vs. EWMA Baseline Band
+            Real-Time Error Rate vs. Baseline Band
           </h2>
         </div>
         <div className="flex items-center gap-4 text-xs">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-0.5 bg-rose-400 rounded-full" />
-            <span className="text-slate-400">Observed Rate</span>
+            <span className="text-slate-400">Observed Rate ({mainWindow}s)</span>
           </div>
+          {fastWindow > 0 && (
+            <div className="flex items-center gap-1.5" title={`Fast window: alerts only at ${config?.fast_min_severity ?? 'HIGH'} or above`}>
+              <span className="w-3 h-0 border-t-2 border-dashed border-orange-300/80" />
+              <span className="text-slate-400">Fast ({fastWindow}s)</span>
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-2 bg-sky-400/20 border border-sky-400/40 rounded-sm" />
             <span className="text-slate-400">Baseline Band (3σ)</span>
@@ -147,6 +158,20 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
                       <span className="text-slate-400">Observed Rate:</span>
                       <span className="font-bold text-rose-400">{d.ratePct}%</span>
                     </div>
+                    {d.fastRatePct !== null && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-slate-400">Fast window:</span>
+                        <span className="font-mono text-orange-300">{d.fastRatePct}%</span>
+                      </div>
+                    )}
+                    {d.baseline_source && (
+                      <div className="flex justify-between gap-4">
+                        <span className="text-slate-400">Reference:</span>
+                        <span className="font-mono text-slate-300">
+                          {d.baseline_source === 'seasonal' ? 'same time, past days' : 'rolling'}
+                        </span>
+                      </div>
+                    )}
                     {d.baselineMeanPct !== null && (
                       <div className="flex justify-between gap-4">
                         <span className="text-slate-400">Baseline Mean:</span>
@@ -205,6 +230,21 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
               fill="url(#bandGradient)"
               isAnimationActive={false}
             />
+
+            {/* Fast-window rate (dual-window detection) */}
+            {fastWindow > 0 && (
+              <Line
+                type="monotone"
+                dataKey="fastRatePct"
+                stroke="#fdba74"
+                strokeOpacity={0.8}
+                strokeWidth={1.25}
+                strokeDasharray="4 3"
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+            )}
 
             {/* Error Rate Line */}
             <Line

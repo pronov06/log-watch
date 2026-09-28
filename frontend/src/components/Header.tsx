@@ -85,7 +85,7 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-400 hidden sm:block">
-            Real-Time Statistical Log Anomaly Detector • EWMA Baseline & Multi-Channel Alerting
+            Real-Time Log Anomaly Detector • Robust Median/MAD Baseline & Multi-Channel Alerting
           </p>
         </div>
       </div>

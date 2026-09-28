@@ -75,6 +75,7 @@ class DetectionResult(BaseModel):
     baseline_std: float
     window_total: int
     window_errors: int
+    window_seconds: int = 0  # which window produced this result (dual-window detection)
 
 
 # ---------------------------------------------------------------------------

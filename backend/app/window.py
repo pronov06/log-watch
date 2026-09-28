@@ -69,25 +69,29 @@ class SlidingWindow:
                 if self._error_counter[msg] <= 0:
                     del self._error_counter[msg]
 
-    def snapshot(self, now: float | None = None) -> dict:
+    def snapshot(self, now: float | None = None, seconds: int | None = None) -> dict:
         """
-        Return current window statistics.
+        Return statistics for the last `seconds` (default: the whole window).
 
-        Returns a dict with: total, errors, warnings, error_rate, events_per_sec
+        A shorter `seconds` gives the fast sub-window used by dual-window detection
+        from the same buckets. Returns: total, errors, warnings, error_rate, events_per_sec.
         """
         now_i = int(now or time.time())
         self._evict(now_i)
+        span = min(seconds or self.window, self.window)
+        cutoff = now_i - span
+        buckets = [b for b in self.buckets if b.sec > cutoff]
 
-        total = sum(b.total for b in self.buckets)
-        errors = sum(b.errors for b in self.buckets)
-        warnings = sum(b.warnings for b in self.buckets)
+        total = sum(b.total for b in buckets)
+        errors = sum(b.errors for b in buckets)
+        warnings = sum(b.warnings for b in buckets)
 
         return {
             "total": total,
             "errors": errors,
             "warnings": warnings,
             "error_rate": (errors / total) if total else 0.0,
-            "events_per_sec": total / self.window if self.window else 0.0,
+            "events_per_sec": total / span if span else 0.0,
         }
 
     def top_errors(self, n: int = 3) -> list[dict]:

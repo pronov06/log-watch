@@ -18,15 +18,15 @@ import asyncio
 import logging
 import re
 import time
-from collections import Counter, deque
-from datetime import datetime, timezone
+from collections import deque
+
 
 from app.alerts import AlertManager
-from app.baseline import Baseline
+from app.baseline import make_baseline
 from app.bus import EventBus
 from app.config import Settings
 from app.detector import Detector
-from app.models import Severity
+from app.evaluator import Evaluator
 from app.parser import parse_line
 from app.tailer import MultiTailer
 from app.window import SlidingWindow
@@ -61,15 +61,13 @@ class Pipeline:
 
         # Core components
         self.window = SlidingWindow(window_seconds=cfg.window_seconds)
-        self.baseline = Baseline(
-            warmup_samples=cfg.baseline_warmup_samples,
-            alpha=cfg.baseline_alpha,
-            min_std=cfg.baseline_min_std,
-            z_low=cfg.z_low,
-            persist_path=cfg.baseline_path,
-        )
+        self.baseline = make_baseline(cfg)
         self.detector = Detector(cfg)
         self.alert_manager = AlertManager(cfg, window_seconds=cfg.window_seconds)
+        # Fast window (dual-window detection) keeps its own baseline: a 60 s rate is noisier
+        self.fast_baseline = make_baseline(cfg, ".fast") if cfg.fast_window_seconds else None
+        self.evaluator = Evaluator(cfg, self.window, self.baseline, self.detector, self.alert_manager,
+                                   fast_baseline=self.fast_baseline)
 
         # Tailer → parser queue
         self._line_queue: asyncio.Queue = asyncio.Queue(maxsize=10_000)
@@ -88,9 +86,6 @@ class Pipeline:
         # Ingest lag = processing time - the event's own timestamp, i.e. how long a line
         # took from being logged to entering the window (includes the tailer poll interval).
         self._lags: deque[float] = deque(maxlen=2000)
-        # Detection latency = first breaching tick → OPENED (the confirm-ticks cost).
-        self._breach_started: float | None = None
-        self.last_detect_sec: float | None = None
 
         # Log sampling state
         self._log_counter = 0
@@ -120,7 +115,7 @@ class Pipeline:
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        self.baseline.save()
+        self._save_baselines()
         logger.info("Pipeline stopped")
 
     async def _consumer_loop(self) -> None:
@@ -180,61 +175,17 @@ class Pipeline:
         """
         while self._running:
             await asyncio.sleep(self.cfg.eval_interval_sec)
-
             try:
-                snap = self.window.snapshot()
-                reliable = snap["total"] >= self.cfg.min_events_in_window
+                tick = self.evaluator.step(time.time())
+                tick.metric["ingest_lag_ms_p95"] = self._lag_pct(0.95)
 
-                # Baseline: warm-up or update
-                if reliable and not self.baseline.ready:
-                    self.baseline.warmup_add(snap["error_rate"])
-
-                # Detection
-                result = None
-                if reliable and self.baseline.ready:
-                    result = self.detector.evaluate(snap, self.baseline)
-
-                # Update baseline (only if not breaching and no open alert)
-                breaching = bool(result and result.severity > Severity.NONE)
-                tick_at = time.time()
-                if breaching and self._breach_started is None:
-                    self._breach_started = tick_at
-                elif not breaching and not self.alert_manager.has_open_alert():
-                    self._breach_started = None
-                if self._should_update_baseline(reliable, breaching):
-                    self.baseline.update(snap["error_rate"])
-
-                # Build metric point for the bus
-                baseline_state = self.baseline.state()
-                metric_data = {
-                    "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                    "error_rate": round(snap["error_rate"], 6),
-                    "total": snap["total"],
-                    "errors": snap["errors"],
-                    "events_per_sec": round(snap["events_per_sec"], 2),
-                    "baseline_mean": baseline_state["mean"] if self.baseline.ready else None,
-                    "baseline_std": baseline_state["std"] if self.baseline.ready else None,
-                    "upper_band": baseline_state["upper_band"] if self.baseline.ready else None,
-                    "lower_band": baseline_state["lower_band"] if self.baseline.ready else None,
-                    "z": round(result.z, 4) if result else None,
-                    "severity": result.severity.name if result else "NONE",
-                    "ingest_lag_ms_p95": self._lag_pct(0.95),
-                }
-
-                self.bus.publish("metric", metric_data)
+                self.bus.publish("metric", tick.metric)
                 for listener in self.metric_listeners:
-                    listener(metric_data)
-                self.bus.publish("baseline", baseline_state)
+                    listener(tick.metric)
+                self.bus.publish("baseline", tick.baseline_state)
 
-                # Process alerts
-                top_errors = self.window.top_errors(n=3)
-                for alert_event in self.alert_manager.process(result, top_errors=top_errors):
-                    if alert_event.event == "OPENED" and self._breach_started is not None:
-                        self.last_detect_sec = round(tick_at - self._breach_started, 2)
-                        alert_event.detection_latency_sec = self.last_detect_sec
-                    alert_data = alert_event.model_dump()
-                    self.bus.publish("alert", alert_data)
-                    # Enqueue for publishers
+                for alert_event in tick.alerts:
+                    self.bus.publish("alert", alert_event.model_dump())
                     try:
                         self.alert_queue.put_nowait(alert_event)
                     except asyncio.QueueFull:
@@ -245,20 +196,10 @@ class Pipeline:
             except Exception:
                 logger.exception("Evaluator error")
 
-    def _should_update_baseline(self, reliable: bool, breaching: bool) -> bool:
-        """
-        Only calm, statistically reliable samples may teach the baseline what "normal" is.
-
-        Breaching samples never do. With FREEZE_BASELINE_DURING_ALERT (default) the
-        baseline also stays frozen until the alert resolves: the calm-looking ticks inside
-        an incident (e.g. a dip between two bursts) would otherwise drag the mean up and
-        make the rest of the incident look normal (baseline poisoning).
-        """
-        if not (reliable and self.baseline.ready) or breaching:
-            return False
-        if self.cfg.freeze_baseline_during_alert and self.alert_manager.has_open_alert():
-            return False
-        return True
+    def _save_baselines(self) -> None:
+        self.baseline.save()
+        if self.fast_baseline is not None:
+            self.fast_baseline.save()
 
     def _lag_pct(self, q: float) -> float | None:
         if not self._lags:
@@ -271,7 +212,7 @@ class Pipeline:
         return {
             "ingest_lag_ms_p50": self._lag_pct(0.50),
             "ingest_lag_ms_p95": self._lag_pct(0.95),
-            "last_detection_latency_sec": self.last_detect_sec,
+            "last_detection_latency_sec": self.evaluator.last_detect_sec,
             # Worst case from a sustained breach to OPENED on the wire
             "detection_budget_sec": round(cfg.eval_interval_sec * (cfg.confirm_ticks + 1) + 1, 1),
         }
@@ -281,7 +222,7 @@ class Pipeline:
         while self._running:
             await asyncio.sleep(60)
             try:
-                self.baseline.save()
+                self._save_baselines()
             except asyncio.CancelledError:
                 break
             except Exception:

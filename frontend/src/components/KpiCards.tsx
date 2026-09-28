@@ -45,13 +45,20 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" />
           <span>Status:</span>
           <span className={`font-semibold ${getSeverityColor(severity)}`}>{severity}</span>
+          {latestMetric?.fast_error_rate != null && (
+            <span className="ml-auto font-mono text-orange-300/90" title="Fast window rate (alerts only when severe)">
+              fast {formatPct(latestMetric.fast_error_rate)}
+            </span>
+          )}
         </div>
       </div>
 
       {/* 2. Learned Baseline */}
       <div className="glass-panel p-4 rounded-xl relative overflow-hidden transition-all hover:border-slate-600/60">
         <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-          <span className="font-medium tracking-wide">EWMA Baseline</span>
+          <span className="font-medium tracking-wide" title="Center ± robust spread the current rate is compared with">
+            Baseline · {baseline?.method ?? 'median/MAD'}
+          </span>
           <Sparkles className="w-4 h-4 text-sky-400" />
         </div>
         {isWarmingUp ? (
@@ -84,6 +91,13 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
                 {formatPct(baseline?.upper_band)}
               </span>
             </div>
+            {baseline?.seasonal_min_days != null && (
+              <div className="mt-0.5 text-[11px] text-slate-500" data-testid="baseline-source">
+                {baseline.source === 'seasonal'
+                  ? 'vs same time on past days'
+                  : `rolling · same-hour after ${baseline.seasonal_days ?? 0}/${baseline.seasonal_min_days} days`}
+              </div>
+            )}
           </div>
         )}
       </div>

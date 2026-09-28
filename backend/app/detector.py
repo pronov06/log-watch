@@ -1,5 +1,9 @@
 """
-Anomaly detector — computes z-scores and assigns severity levels.
+Anomaly detector — scores each tick against the baseline and assigns a severity.
+
+The score is z = (rate - center) / scale, where (center, scale) comes from the configured
+baseline: median/MAD by default (a robust z-score), EWMA mean/std, or the same-hour
+seasonal reference.
 
 Severity classification uses both the z-score (statistical deviation from
 the baseline) and an absolute rate floor:
@@ -16,11 +20,17 @@ a 50%+ error rate is always flagged as critical regardless of statistical histor
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 from app.baseline import Baseline
 from app.config import Settings
 from app.models import DetectionResult, Severity
+
+
+def _iso(now: float | None) -> str:
+    dt = datetime.now(timezone.utc) if now is None else datetime.fromtimestamp(now, timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
 
 
 def classify_severity(z: float, rate: float, cfg: Settings) -> Severity:
@@ -57,7 +67,7 @@ class Detector:
     def __init__(self, cfg: Settings):
         self.cfg = cfg
 
-    def evaluate(self, snapshot: dict, baseline: Baseline) -> DetectionResult | None:
+    def evaluate(self, snapshot: dict, baseline: Baseline, now: float | None = None) -> DetectionResult | None:
         """
         Evaluate the current window snapshot against the baseline.
 
@@ -69,8 +79,15 @@ class Detector:
             return None
 
         rate = snapshot["error_rate"]
-        mean = baseline.mean
-        std = baseline.std
+        ref = baseline.reference(now)
+        mean = ref.center
+        # Sampling-noise floor: a rate measured over n events can't be trusted more precisely
+        # than the binomial standard error sqrt(p(1-p)/n). The baseline's scale comes from
+        # past windows; when traffic drops (night, low-volume services) the current window
+        # is noisier than that history, and this keeps small-n noise from looking anomalous.
+        n = snapshot["total"]
+        noise = math.sqrt(max(mean, 1e-4) * (1 - mean) / n) if n else 0.0
+        std = max(ref.scale, noise)
 
         # z-score: how many standard deviations above the mean
         z = (rate - mean) / std if std > 0 else 0.0
@@ -79,7 +96,7 @@ class Detector:
         breaching = severity > Severity.NONE
 
         return DetectionResult(
-            ts=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            ts=_iso(now),
             rate=round(rate, 6),
             z=round(z, 4),
             severity=severity,

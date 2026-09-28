@@ -110,3 +110,17 @@ class TestSlidingWindow:
         w.clear()
         snap = w.snapshot(now=1000.0)
         assert snap["total"] == 0
+
+
+def test_snapshot_sub_window_uses_recent_buckets_only():
+    from app.window import SlidingWindow
+    w = SlidingWindow(window_seconds=300)
+    for t in range(1000, 1300):          # 5 min of calm traffic
+        w.add("INFO", now=t)
+    for t in range(1290, 1300):          # last 10 s: errors
+        w.add("ERROR", "boom", now=t)
+    slow = w.snapshot(now=1299)
+    fast = w.snapshot(now=1299, seconds=10)
+    assert fast["total"] == 20 and fast["errors"] == 10 and fast["error_rate"] == 0.5
+    assert slow["total"] == 310 and slow["error_rate"] < 0.04
+    assert fast["events_per_sec"] == 2.0

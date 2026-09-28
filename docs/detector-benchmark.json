@@ -1,0 +1,640 @@
+{
+  "days": 5,
+  "seeds": [
+    7,
+    11,
+    23
+  ],
+  "results": [
+    {
+      "window": "60 s window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "EWMA mean/std",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 24,
+      "median_delay_sec": 17.5,
+      "max_delay_sec": 37,
+      "delay_by_type": {
+        "spike": 12.0,
+        "moderate": 28.0,
+        "ramp": null
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.7,
+        "blip": 3.8,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 4.5,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 26.0,
+      "max_delay_sec": 131,
+      "delay_by_type": {
+        "spike": 12.0,
+        "moderate": 26.0,
+        "ramp": 111.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.2,
+        "blip": 4.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 5.2,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 27.5,
+      "max_delay_sec": 142,
+      "delay_by_type": {
+        "spike": 12.0,
+        "moderate": 27.5,
+        "ramp": 113.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 3.7,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 3.7,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 3 bad windows in a row",
+      "baseline": "EWMA mean/std",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 33,
+      "median_delay_sec": 180,
+      "max_delay_sec": 278,
+      "delay_by_type": {
+        "spike": 159,
+        "moderate": 171.5,
+        "ramp": 260.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.0,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 3 bad windows in a row",
+      "baseline": "median/MAD",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 33,
+      "median_delay_sec": 180,
+      "max_delay_sec": 278,
+      "delay_by_type": {
+        "spike": 159,
+        "moderate": 171.5,
+        "ramp": 260.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.0,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 3 bad windows in a row",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 33,
+      "median_delay_sec": 183,
+      "max_delay_sec": 278,
+      "delay_by_type": {
+        "spike": 159,
+        "moderate": 176.0,
+        "ramp": 260.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval every 1 min",
+      "baseline": "EWMA mean/std",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 121.5,
+      "max_delay_sec": 278,
+      "delay_by_type": {
+        "spike": 45.0,
+        "moderate": 121.5,
+        "ramp": 244.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval every 1 min",
+      "baseline": "median/MAD",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 121.5,
+      "max_delay_sec": 278,
+      "delay_by_type": {
+        "spike": 45.0,
+        "moderate": 121.5,
+        "ramp": 244.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval every 1 min",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 35,
+      "median_delay_sec": 120,
+      "max_delay_sec": 321,
+      "delay_by_type": {
+        "spike": 45.0,
+        "moderate": 120,
+        "ramp": 263.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "EWMA mean/std",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 12,
+      "median_delay_sec": 38.5,
+      "max_delay_sec": 43,
+      "delay_by_type": {
+        "spike": 38.5,
+        "moderate": null,
+        "ramp": null
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 98.0,
+      "max_delay_sec": 238,
+      "delay_by_type": {
+        "spike": 35.5,
+        "moderate": 98.0,
+        "ramp": 227.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 100.0,
+      "max_delay_sec": 311,
+      "delay_by_type": {
+        "spike": 35.5,
+        "moderate": 100.0,
+        "ramp": 233.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.0,
+      "scored_days": 6
+    },
+    {
+      "window": "dual: 5 min + 60 s fast path (\u2265HIGH) \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "EWMA mean/std",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 24,
+      "median_delay_sec": 31.5,
+      "max_delay_sec": 61,
+      "delay_by_type": {
+        "spike": 20.5,
+        "moderate": 47.5,
+        "ramp": null
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 5.2,
+        "blip": 0.2,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 5.3,
+      "scored_days": 6
+    },
+    {
+      "window": "dual: 5 min + 60 s fast path (\u2265HIGH) \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 46.0,
+      "max_delay_sec": 233,
+      "delay_by_type": {
+        "spike": 20.5,
+        "moderate": 46.0,
+        "ramp": 205.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.3,
+        "blip": 0.2,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.5,
+      "scored_days": 6
+    },
+    {
+      "window": "dual: 5 min + 60 s fast path (\u2265HIGH) \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "high traffic (30 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 47.5,
+      "max_delay_sec": 233,
+      "delay_by_type": {
+        "spike": 20.5,
+        "moderate": 47.5,
+        "ramp": 209.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.2,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.2,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "EWMA mean/std",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 26,
+      "median_delay_sec": 24.0,
+      "max_delay_sec": 129,
+      "delay_by_type": {
+        "spike": 14.5,
+        "moderate": 35,
+        "ramp": 116
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.2,
+        "blip": 2.0,
+        "noise": 3.7
+      },
+      "false_alarms_per_day_total": 6.8,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 27.5,
+      "max_delay_sec": 198,
+      "delay_by_type": {
+        "spike": 15.0,
+        "moderate": 27.5,
+        "ramp": 115.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 14.0,
+        "blip": 2.7,
+        "noise": 17.0
+      },
+      "false_alarms_per_day_total": 33.7,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 47.5,
+      "max_delay_sec": 226,
+      "delay_by_type": {
+        "spike": 18.0,
+        "moderate": 47.5,
+        "ramp": 136.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.0,
+        "blip": 1.8,
+        "noise": 6.3
+      },
+      "false_alarms_per_day_total": 9.2,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 3 bad windows in a row",
+      "baseline": "EWMA mean/std",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 32,
+      "median_delay_sec": 181.5,
+      "max_delay_sec": 379,
+      "delay_by_type": {
+        "spike": 159,
+        "moderate": 172,
+        "ramp": 287.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.8,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.8,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 3 bad windows in a row",
+      "baseline": "median/MAD",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 32,
+      "median_delay_sec": 184.0,
+      "max_delay_sec": 379,
+      "delay_by_type": {
+        "spike": 159,
+        "moderate": 180,
+        "ramp": 299.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.2,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.2,
+      "scored_days": 6
+    },
+    {
+      "window": "60 s window \u00b7 3 bad windows in a row",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 27,
+      "median_delay_sec": 197,
+      "max_delay_sec": 457,
+      "delay_by_type": {
+        "spike": 160,
+        "moderate": 182.5,
+        "ramp": 327.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval every 1 min",
+      "baseline": "EWMA mean/std",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 111.5,
+      "max_delay_sec": 307,
+      "delay_by_type": {
+        "spike": 59.5,
+        "moderate": 111.5,
+        "ramp": 250.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval every 1 min",
+      "baseline": "median/MAD",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 111.5,
+      "max_delay_sec": 307,
+      "delay_by_type": {
+        "spike": 59.5,
+        "moderate": 111.5,
+        "ramp": 250.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.2,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.2,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval every 1 min",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 143.5,
+      "max_delay_sec": 337,
+      "delay_by_type": {
+        "spike": 59.5,
+        "moderate": 143.5,
+        "ramp": 270.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.2,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.2,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "EWMA mean/std",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 9,
+      "median_delay_sec": 41,
+      "max_delay_sec": 52,
+      "delay_by_type": {
+        "spike": 41,
+        "moderate": null,
+        "ramp": null
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.0,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 98.5,
+      "max_delay_sec": 287,
+      "delay_by_type": {
+        "spike": 37.0,
+        "moderate": 98.5,
+        "ramp": 222.0
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.8,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 1.8,
+      "scored_days": 6
+    },
+    {
+      "window": "5 min window \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 35,
+      "median_delay_sec": 120,
+      "max_delay_sec": 292,
+      "delay_by_type": {
+        "spike": 39.0,
+        "moderate": 120,
+        "ramp": 248.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.2,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.2,
+      "scored_days": 6
+    },
+    {
+      "window": "dual: 5 min + 60 s fast path (\u2265HIGH) \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "EWMA mean/std",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 23,
+      "median_delay_sec": 28,
+      "max_delay_sec": 226,
+      "delay_by_type": {
+        "spike": 22.5,
+        "moderate": 67.5,
+        "ramp": 226
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.0,
+        "blip": 0.3,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.3,
+      "scored_days": 6
+    },
+    {
+      "window": "dual: 5 min + 60 s fast path (\u2265HIGH) \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 36,
+      "median_delay_sec": 63.0,
+      "max_delay_sec": 262,
+      "delay_by_type": {
+        "spike": 21.0,
+        "moderate": 63.0,
+        "ramp": 206.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 1.8,
+        "blip": 0.3,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 2.2,
+      "scored_days": 6
+    },
+    {
+      "window": "dual: 5 min + 60 s fast path (\u2265HIGH) \u00b7 eval 5 s \u00b7 2 ticks",
+      "baseline": "median/MAD + same-hour",
+      "traffic": "low traffic (2 req/s)",
+      "incidents": 36,
+      "caught": 35,
+      "median_delay_sec": 97,
+      "max_delay_sec": 275,
+      "delay_by_type": {
+        "spike": 26.0,
+        "moderate": 97,
+        "ramp": 246.5
+      },
+      "false_alarms_per_day": {
+        "expected_pattern": 0.2,
+        "blip": 0.0,
+        "noise": 0.0
+      },
+      "false_alarms_per_day_total": 0.2,
+      "scored_days": 6
+    }
+  ]
+}

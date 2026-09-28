@@ -35,7 +35,14 @@ class Settings(BaseSettings):
     source_rescan_sec: float = Field(2.0, gt=0)
 
     # --- Windowing ---
-    window_seconds: int = Field(60, ge=1)
+    # Dual-window detection (see docs/detector-benchmark.md for the numbers behind it):
+    #   WINDOW_SECONDS       main window; any severity alerts. 5 min smooths out short,
+    #                        self-healing blips and noisy low traffic.
+    #   FAST_WINDOW_SECONDS  short window that may only alert at >= FAST_MIN_SEVERITY, so big
+    #                        spikes are still caught in seconds. 0 disables it.
+    window_seconds: int = Field(300, ge=1)
+    fast_window_seconds: int = Field(60, ge=0)
+    fast_min_severity: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"] = "HIGH"
     eval_interval_sec: float = Field(5.0, gt=0)
     min_events_in_window: int = Field(20, ge=1)
 
@@ -45,6 +52,20 @@ class Settings(BaseSettings):
     baseline_min_std: float = Field(0.01, gt=0)
     freeze_baseline_during_alert: bool = True
     baseline_path: str = "./data/baseline.json"
+    # "mad": median ± scaled MAD over BASELINE_HISTORY_SEC of calm samples (robust to spikes)
+    # "ewma": exponentially weighted mean/std (kept for comparison)
+    baseline_method: Literal["mad", "ewma"] = "mad"
+    baseline_history_sec: float = Field(1800.0, ge=60)
+    # Same-hour baseline: compare with the same time slot on previous days once
+    # SEASONAL_MIN_DAYS of history exist for it; rolling baseline until then.
+    seasonal_enabled: bool = True
+    seasonal_day_seconds: int = Field(86_400, ge=60)
+    # 288 slots/day = 5 min; the reference looks ±SEASONAL_TOLERANCE_SLOTS around "now" on
+    # previous days, so patterns that start a few minutes early/late don't alert.
+    seasonal_buckets_per_day: int = Field(288, ge=1, le=1440)
+    seasonal_tolerance_slots: int = Field(3, ge=0, le=60)
+    seasonal_min_days: int = Field(3, ge=1)
+    seasonal_max_days: int = Field(7, ge=1)
 
     # --- Detection thresholds ---
     z_low: float = 3.0
@@ -90,12 +111,18 @@ class Settings(BaseSettings):
             problems.append("MIN_ABS_RATE must be below ABS_RATE_CRITICAL")
         if self.eval_interval_sec > self.window_seconds:
             problems.append("EVAL_INTERVAL_SEC must not exceed WINDOW_SECONDS")
+        if self.seasonal_max_days < self.seasonal_min_days:
+            problems.append("SEASONAL_MAX_DAYS must be >= SEASONAL_MIN_DAYS")
         if self.sns_min_severity.upper() not in SEVERITIES:
             problems.append(f"SNS_MIN_SEVERITY must be one of {', '.join(SEVERITIES)}")
         if self.sns_topic_arn and not self.sns_topic_arn.startswith("arn:aws"):
             problems.append("SNS_TOPIC_ARN must be a full ARN (arn:aws:sns:<region>:<account>:<name>)")
         if problems:
             raise ValueError("; ".join(problems))
+        if self.fast_window_seconds >= self.window_seconds:
+            # e.g. an older .env with WINDOW_SECONDS=60: a "fast" window that isn't shorter
+            # adds nothing, so fall back to single-window detection instead of failing.
+            self.fast_window_seconds = 0
         self.sns_min_severity = self.sns_min_severity.upper()
         return self
 
@@ -103,6 +130,8 @@ class Settings(BaseSettings):
         """Non-secret settings the frontend needs (served by /api/config and the WS snapshot)."""
         return {
             "window_seconds": self.window_seconds,
+            "fast_window_seconds": self.fast_window_seconds,
+            "fast_min_severity": self.fast_min_severity,
             "eval_interval_sec": self.eval_interval_sec,
             "min_events_in_window": self.min_events_in_window,
             "z_low": self.z_low,
@@ -114,6 +143,8 @@ class Settings(BaseSettings):
             "confirm_ticks": self.confirm_ticks,
             "resolve_ticks": self.resolve_ticks,
             "baseline_warmup_samples": self.baseline_warmup_samples,
+            "baseline_method": self.baseline_method,
+            "seasonal_enabled": self.seasonal_enabled,
             "publish_mode": self.publish_mode,
             "sim_enabled": self.enable_sim,
         }

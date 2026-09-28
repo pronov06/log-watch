@@ -303,8 +303,12 @@ export function useLiveFeed() {
           setLatestMetric(metricsRes[metricsRes.length - 1]);
         }
         if (Array.isArray(alertsRes)) {
-          setAlerts(alertsRes);
-          setActiveAlerts(alertsRes.filter((a: Alert) => a.status === 'OPEN'));
+          // /api/alerts is an event history (OPENED, ESCALATED, RESOLVED share an id),
+          // newest first: keep each alert's latest event only.
+          const seen = new Set<string>();
+          const latest = (alertsRes as Alert[]).filter((a) => !seen.has(a.id) && seen.add(a.id));
+          setAlerts(latest);
+          setActiveAlerts(latest.filter((a) => a.status === 'OPEN'));
         }
       } catch (err) {
         console.warn('Initial hydration failed:', err);

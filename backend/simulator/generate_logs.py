@@ -146,6 +146,8 @@ def run_generator(
     scenario_at: float = 0,
     scenario_duration: float = 60,
     scenario_error_ratio: float = 0.35,
+    daily_pattern_enabled: bool = False,
+    day_seconds: float = 86_400,
 ):
     """
     Main generator loop.
@@ -171,6 +173,10 @@ def run_generator(
 
             # Determine current error ratio and volume multiplier
             current_error, rps_mult = base_error, 1.0
+            if daily_pattern_enabled:
+                pattern_error, rps_mult = daily_pattern(time.time(), day_seconds)
+                if pattern_error is not None:
+                    current_error = max(current_error, pattern_error)
 
             # Check scheduled scenario
             if scenario and elapsed >= scenario_at:
@@ -213,6 +219,24 @@ def run_generator(
 
 
 SCENARIOS = ("spike", "ramp", "flood", "outage", "flapping")
+
+
+# Recurring, *expected* behaviour in a day (fractions of the day, UTC-aligned so the
+# backend's same-hour slots line up with it):
+#   02:00-03:30  nightly batch job: 8% errors (retries against a cold cache)
+#   09:00-11:00  morning peak: 4% errors (load-related timeouts)
+#   traffic follows a daily curve: lowest at 00:00, 1.4x at 12:00
+DAILY_PATTERN = ((2 / 24, 3.5 / 24, 0.08, "nightly batch"), (9 / 24, 11 / 24, 0.04, "morning peak"))
+
+
+def daily_pattern(t: float, day_seconds: float = 86_400) -> tuple[float | None, float]:
+    """Return (error_ratio or None, rps_multiplier) for epoch time `t`."""
+    frac = (t % day_seconds) / day_seconds
+    rps_mult = 1.0 - 0.4 * math.cos(2 * math.pi * frac)  # 0.6x at midnight, 1.4x at noon
+    for start, end, err, _name in DAILY_PATTERN:
+        if start <= frac < end:
+            return err, rps_mult
+    return None, rps_mult
 
 
 def _apply_scenario(
@@ -290,6 +314,11 @@ def main():
     parser.add_argument("--duration", type=float, default=60, help="Scenario duration in seconds")
     parser.add_argument("--error-ratio", type=float, default=0.35, help="Error ratio during scenario")
 
+    parser.add_argument("--daily-pattern", action="store_true",
+                        help="Add the recurring daily pattern (nightly batch + morning peak errors, traffic curve)")
+    parser.add_argument("--day-seconds", type=float, default=86_400,
+                        help="Length of a simulated day; e.g. 600 compresses a day into 10 minutes for demos "
+                             "(set SEASONAL_DAY_SECONDS to the same value on the backend)")
     args = parser.parse_args()
 
     run_generator(
@@ -300,6 +329,8 @@ def main():
         scenario_at=args.at,
         scenario_duration=args.duration,
         scenario_error_ratio=args.error_ratio,
+        daily_pattern_enabled=args.daily_pattern,
+        day_seconds=args.day_seconds,
     )
 
 
