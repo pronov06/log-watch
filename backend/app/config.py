@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     ring_buffer_size: int = Field(2000, ge=100)
     enable_sim: bool = True
+    # Serve the built dashboard from the backend (single-container deploys, e.g. Hugging Face).
+    # Empty → API only; the dashboard is served by Vite or nginx instead.
+    static_dir: str = ""
 
     # --- App logging ---
     # JSON lines on stdout for the detector's own logs (CloudWatch/Loki friendly).

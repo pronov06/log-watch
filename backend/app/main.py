@@ -15,6 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
 from app.api.ws import router as ws_router
@@ -116,6 +117,10 @@ def create_app() -> FastAPI:
     # Routes
     app.include_router(api_router)
     app.include_router(ws_router)
+
+    # Mounted last so /api and /ws keep priority over the static files
+    if cfg.static_dir and Path(cfg.static_dir).is_dir():
+        app.mount("/", StaticFiles(directory=cfg.static_dir, html=True), name="dashboard")
 
     return app
 

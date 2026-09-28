@@ -70,3 +70,13 @@ def test_ready_is_503_before_startup_and_200_when_running(monkeypatch, tmp_path)
         assert body["ready"] is True, body
         health = client.get("/api/health").json()
         assert "latency" in health and health["publisher"]["publishers"] == ["console"]
+
+
+def test_static_dashboard_served_without_shadowing_api(monkeypatch, tmp_path):
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "index.html").write_text("<title>Log Watch</title>")
+    monkeypatch.setenv("STATIC_DIR", str(ui))
+    client = _client(monkeypatch, tmp_path)
+    assert "Log Watch" in client.get("/").text
+    assert client.get("/api/config").json()["window_seconds"] > 0
