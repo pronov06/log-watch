@@ -1,10 +1,14 @@
-.PHONY: test test-backend dev-backend dev-frontend dev-sim up down build sim-spike aws-setup
+.PHONY: smoke test test-backend dev-backend dev-frontend dev-sim up down build sim-spike aws-setup
 
 PYTHON ?= python
 NPM ?= npm
 
 test:
 	cd backend && $(PYTHON) -m pytest -v
+
+# Live E2E: real backend + generator + WebSocket, ~1 min, exits non-zero on failure
+smoke:
+	$(PYTHON) scripts/smoke_realtime.py
 
 # Backend and simulator must agree on the log file (the sim control file lives next to it).
 LOG_FILE ?= ../data/app.log

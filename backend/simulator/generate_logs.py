@@ -114,8 +114,8 @@ def generate_line(error_ratio: float = 0.02, warn_ratio: float = 0.05) -> str:
     error_ratio and warn_ratio control the probability of ERROR and WARNING
     levels respectively. The remaining probability is INFO.
     """
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + \
-         f"{random.randint(0, 999):03d}Z"
+    # Real millisecond timestamp: the backend's ingest-lag metric is computed from it
+    ts = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     service = _pick_service()
     r = random.random()
