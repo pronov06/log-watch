@@ -28,3 +28,7 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local tooling / notes
+.claude/
+MASTER_PROMPT.md
