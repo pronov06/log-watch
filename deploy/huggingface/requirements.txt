@@ -1,0 +1,4 @@
+pydantic-settings
+boto3
+python-dotenv
+websockets

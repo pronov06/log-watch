@@ -3,15 +3,17 @@ title: Log Watch
 emoji: 📈
 colorFrom: green
 colorTo: gray
-sdk: docker
-app_port: 7860
+sdk: gradio
+sdk_version: 6.28.0
+python_version: "3.12"
+app_file: space.py
 pinned: false
 short_description: Real-time log anomaly detection with live alerts
 ---
 
 # Log Watch: live demo
 
-Real-time log anomaly detection. This Space runs the full stack in one container:
+Real-time log anomaly detection. This Space runs the full stack:
 - a traffic generator writing realistic logs (about 2% errors);
 - the detector (median/MAD baseline, 5-minute + 60-second windows, severity levels);
 - the live dashboard, streamed over WebSocket.
