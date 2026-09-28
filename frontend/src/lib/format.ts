@@ -47,29 +47,46 @@ export function formatDuration(seconds: number | null | undefined): string {
 export function getSeverityColor(sev: Severity): string {
   switch (sev) {
     case 'CRITICAL':
-      return 'text-rose-400';
+      return 'text-sev-critical';
     case 'HIGH':
-      return 'text-red-400';
+      return 'text-sev-high';
     case 'MEDIUM':
-      return 'text-amber-400';
+      return 'text-sev-medium';
     case 'LOW':
-      return 'text-yellow-300';
+      return 'text-sev-low';
     default:
-      return 'text-emerald-400';
+      return 'text-sev-ok';
   }
 }
 
+/** Tag style for a severity: a hairline outline in the severity colour, no fills or glows. */
 export function getSeverityBg(sev: Severity): string {
   switch (sev) {
     case 'CRITICAL':
-      return 'bg-rose-500/10 text-rose-300 border-rose-500/30';
+      return 'text-sev-critical border-sev-critical';
     case 'HIGH':
-      return 'bg-red-500/10 text-red-300 border-red-500/30';
+      return 'text-sev-high border-sev-high';
     case 'MEDIUM':
-      return 'bg-amber-500/10 text-amber-300 border-amber-500/30';
+      return 'text-sev-medium border-sev-medium';
     case 'LOW':
-      return 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30';
+      return 'text-sev-low border-sev-low';
     default:
-      return 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30';
+      return 'text-sev-ok border-sev-ok';
+  }
+}
+
+/** Solid severity swatch, used for the thin rule on the left of an alert. */
+export function getSeverityRule(sev: Severity): string {
+  switch (sev) {
+    case 'CRITICAL':
+      return 'bg-sev-critical';
+    case 'HIGH':
+      return 'bg-sev-high';
+    case 'MEDIUM':
+      return 'bg-sev-medium';
+    case 'LOW':
+      return 'bg-sev-low';
+    default:
+      return 'bg-line';
   }
 }

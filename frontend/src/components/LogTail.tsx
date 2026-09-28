@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { LogLine } from '../types';
 import { formatTime } from '../lib/format';
-import { Terminal, Pause, Play, Trash2, Search, Filter } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 interface LogTailProps {
   logs: LogLine[];
@@ -56,126 +56,84 @@ export const LogTail: React.FC<LogTailProps> = ({ logs }) => {
       case 'ERROR':
       case 'FATAL':
       case 'CRITICAL':
-        return 'text-rose-400 font-bold bg-rose-500/10 px-1 rounded';
+        return 'text-[#F2A38F]';
       case 'WARNING':
       case 'WARN':
-        return 'text-amber-400 font-medium bg-amber-500/10 px-1 rounded';
+        return 'text-[#E3C77F]';
       default:
-        return 'text-sky-400/80';
+        return 'text-cream/45';
     }
   };
 
   return (
-    <div className="glass-panel p-5 rounded-xl w-full flex flex-col h-[340px]">
-      {/* Log Header Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3 pb-3 border-b border-slate-800">
-        <div className="flex items-center gap-2">
-          <Terminal className="w-4 h-4 text-sky-400" />
-          <h2 className="text-sm font-semibold tracking-wide text-slate-200">
-            Live Ingested Log Stream
-          </h2>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">
-            {filteredLogs.length} events
+    <section>
+      <div className="flex flex-wrap items-baseline justify-between gap-3 pb-3 border-b border-ink">
+        <h2 className="text-xl">
+          Log stream{' '}
+          <span className="font-sans text-sm text-muted align-middle ml-1">
+            {filteredLogs.length} lines{isPaused && ' · paused'}
           </span>
-          {isPaused && (
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-              PAUSED
-            </span>
-          )}
-        </div>
+        </h2>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Search box */}
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+        <div className="flex items-center gap-2">
+          <label className="relative">
+            <Search className="w-3.5 h-3.5 text-muted absolute left-2 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search logs..."
+              placeholder="Filter lines"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="bg-slate-950/70 border border-slate-800 rounded-lg pl-8 pr-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500/50 w-36 sm:w-48 transition-all"
+              className="bg-paper border border-line rounded pl-7 pr-2 py-1 text-[13px] placeholder:text-muted focus:outline-none focus:border-forest w-32 sm:w-44 transition-colors"
             />
-          </div>
-
-          {/* Service quick chips */}
-          {services.length > 0 && (
-            <div className="flex items-center gap-1 text-[11px]">
-              <Filter className="w-3 h-3 text-slate-500" />
-              {services.map((svc) => (
-                <button
-                  key={svc}
-                  onClick={() => setServiceFilter(serviceFilter === svc ? null : svc)}
-                  className={`px-2 py-0.5 rounded font-mono transition-colors ${
-                    serviceFilter === svc
-                      ? 'bg-sky-500/25 text-sky-200 border border-sky-500/40'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                  }`}
-                >
-                  {svc}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Pause / Resume Button */}
-          <button
-            onClick={handleTogglePause}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold transition-colors border ${
-              isPaused
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-            }`}
-          >
-            {isPaused ? <Play className="w-3 h-3 fill-current" /> : <Pause className="w-3 h-3" />}
-            <span>{isPaused ? 'Resume' : 'Pause'}</span>
+          </label>
+          <button onClick={handleTogglePause} className={isPaused ? 'btn-primary !py-1' : 'btn-quiet !py-1'}>
+            {isPaused ? 'Resume' : 'Pause'}
           </button>
-
-          {/* Clear Button */}
-          <button
-            onClick={() => setClearedBefore(Date.now())}
-            className="p-1 rounded bg-slate-800 text-slate-400 hover:text-rose-400 hover:bg-slate-700 transition-colors"
-            title="Clear display logs"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
+          <button onClick={() => setClearedBefore(Date.now())} className="btn-quiet !py-1" title="Clear display logs">
+            Clear
           </button>
         </div>
       </div>
 
-      {/* Log Terminal Screen */}
-      <div className="flex-1 overflow-y-auto bg-slate-950/80 rounded-lg p-3 font-mono text-xs border border-slate-800/80 space-y-1 select-text">
+      {services.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-xs">
+          <span className="text-muted">Service</span>
+          {services.map((svc) => (
+            <button
+              key={svc}
+              onClick={() => setServiceFilter(serviceFilter === svc ? null : svc)}
+              className={`font-mono transition-colors ${
+                serviceFilter === svc ? 'text-forest underline underline-offset-4 decoration-2' : 'text-muted hover:text-ink'
+              }`}
+            >
+              {svc}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Terminal: the one dark surface, in forest rather than black */}
+      <div className="h-[300px] overflow-y-auto bg-forest-dark text-cream/90 font-mono text-[12px] leading-relaxed px-4 py-3 select-text">
         {filteredLogs.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-600 text-xs">
-            Waiting for log stream lines…
-          </div>
+          <p className="text-cream/50">
+            {logs.length === 0 ? 'Waiting for the first log lines…' : 'No lines match this filter.'}
+          </p>
         ) : (
           filteredLogs.map((line, idx) => (
-            <div
-              key={idx}
-              className="flex items-start gap-2 hover:bg-white/[0.03] px-1 py-0.5 rounded leading-relaxed transition-colors"
-            >
-              <span className="text-slate-500 text-[11px] shrink-0">
-                {formatTime(line.ts)}
-              </span>
-
-              <span className={`text-[11px] shrink-0 font-bold ${getLevelStyle(line.level)}`}>
-                {line.level.padEnd(5)}
-              </span>
-
-              <span
+            <div key={idx} className="flex gap-3 hover:bg-cream/[0.04] -mx-2 px-2">
+              <span className="text-cream/40 shrink-0">{formatTime(line.ts)}</span>
+              <span className={`shrink-0 w-12 ${getLevelStyle(line.level)}`}>{line.level.slice(0, 5)}</span>
+              <button
                 onClick={() => setServiceFilter(serviceFilter === line.service ? null : line.service)}
-                className="text-slate-400 font-semibold cursor-pointer hover:text-sky-300 transition-colors shrink-0"
+                className="text-cream/60 hover:text-cream shrink-0 hidden sm:inline"
               >
-                [{line.service || 'unknown'}]
-              </span>
-
-              <span className="text-slate-200 break-all flex-1">
-                {line.message || line.raw}
-              </span>
+                {line.service || 'unknown'}
+              </button>
+              <span className="break-all flex-1">{line.message || line.raw}</span>
             </div>
           ))
         )}
       </div>
-    </div>
+    </section>
   );
 };

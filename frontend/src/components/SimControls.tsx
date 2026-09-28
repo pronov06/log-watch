@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
-import { Play, RotateCcw, ChevronDown, Flame, TrendingUp, Waves, ZapOff } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 interface SimControlsProps {
   onSimulate: (scenario: 'spike' | 'ramp' | 'flood' | 'outage' | 'recover', durationSec?: number, errorRatio?: number) => void;
   isSimEnabled: boolean;
 }
+
+const SCENARIOS = [
+  { id: 'spike', duration: 60, ratio: 0.35, title: 'Error spike', detail: 'Jumps to 35% errors for a minute', btn: 'sim-spike-btn' },
+  { id: 'ramp', duration: 90, ratio: 0.5, title: 'Slow ramp', detail: 'Creeps up to 50% over 90 s', btn: 'sim-ramp-btn' },
+  { id: 'flood', duration: 60, ratio: 0.05, title: 'Traffic flood', detail: '10× volume, slightly more errors', btn: 'sim-flood-btn' },
+  { id: 'outage', duration: 45, ratio: 0.95, title: 'Outage', detail: '95% errors, then the service goes quiet', btn: 'sim-outage-btn' },
+] as const;
 
 export const SimControls: React.FC<SimControlsProps> = ({ onSimulate, isSimEnabled }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -26,105 +33,56 @@ export const SimControls: React.FC<SimControlsProps> = ({ onSimulate, isSimEnabl
 
   return (
     <div className="relative inline-block text-left">
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-semibold shadow-md shadow-sky-600/20 transition-all border border-sky-400/20 active:scale-95"
-          id="simulate-dropdown-btn"
-        >
-          <Play className="w-3.5 h-3.5 fill-current" />
-          <span>Simulate</span>
-          <ChevronDown className="w-3 h-3 text-sky-200" />
-        </button>
-
+      <div className="flex items-center gap-2">
         {activeScenario && (
           <button
             onClick={handleRecover}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 border border-emerald-500/40 hover:bg-emerald-600/30 text-emerald-300 text-xs font-semibold transition-all active:scale-95"
+            className="btn-quiet"
             title="End simulation and restore normal traffic"
             id="simulate-recover-btn"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Recover</span>
+            Stop {activeScenario}
           </button>
         )}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="btn-primary"
+          id="simulate-dropdown-btn"
+          aria-expanded={isOpen}
+        >
+          <span>Inject incident</span>
+          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
       </div>
 
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 mt-2 w-64 rounded-xl glass-panel-glow bg-slate-900/95 border border-slate-700/80 shadow-2xl z-50 p-2 text-xs divide-y divide-slate-800">
-            <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              Live Anomaly Injection
-            </div>
-            <div className="py-1 space-y-0.5">
-              <button
-                onClick={() => handleTrigger('spike', 60, 0.35)}
-                className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-800/80 text-left transition-colors group"
-                id="sim-spike-btn"
-              >
-                <div className="p-1 rounded bg-rose-500/20 text-rose-400 group-hover:scale-110 transition-transform">
-                  <Flame className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-200">Error Spike (35%)</div>
-                  <div className="text-[11px] text-slate-400">Instant jump to 35% error rate for 60s</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handleTrigger('ramp', 90, 0.50)}
-                className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-800/80 text-left transition-colors group"
-                id="sim-ramp-btn"
-              >
-                <div className="p-1 rounded bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">
-                  <TrendingUp className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-200">Gradual Ramp</div>
-                  <div className="text-[11px] text-slate-400">Linear increase up to 50% over 90s</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handleTrigger('flood', 60, 0.05)}
-                className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-800/80 text-left transition-colors group"
-                id="sim-flood-btn"
-              >
-                <div className="p-1 rounded bg-sky-500/20 text-sky-400 group-hover:scale-110 transition-transform">
-                  <Waves className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-200">Traffic Flood</div>
-                  <div className="text-[11px] text-slate-400">10x volume increase with normal error ratio</div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handleTrigger('outage', 45, 0.95)}
-                className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-800/80 text-left transition-colors group"
-                id="sim-outage-btn"
-              >
-                <div className="p-1 rounded bg-red-600/20 text-red-400 group-hover:scale-110 transition-transform">
-                  <ZapOff className="w-3.5 h-3.5" />
-                </div>
-                <div>
-                  <div className="font-semibold text-slate-200">Severe Outage (95%)</div>
-                  <div className="text-[11px] text-slate-400">Catastrophic service crash</div>
-                </div>
-              </button>
-            </div>
-
-            <div className="pt-1.5 pb-0.5">
-              <button
-                onClick={handleRecover}
-                className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 font-semibold transition-colors"
-                id="sim-quick-recover-btn"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Restore Normal Traffic</span>
-              </button>
-            </div>
+          <div className="absolute right-0 mt-2 w-72 bg-paper border border-line shadow-[0_8px_24px_-12px_rgba(31,31,31,0.25)] z-50 text-[13px]">
+            <p className="px-4 pt-3 pb-2 text-xs text-muted border-b border-line">
+              Writes simulated traffic to the tailed log. Detection sees it like any real log.
+            </p>
+            <ul>
+              {SCENARIOS.map((s) => (
+                <li key={s.id}>
+                  <button
+                    onClick={() => handleTrigger(s.id, s.duration, s.ratio)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-cream transition-colors flex items-baseline justify-between gap-3"
+                    id={s.btn}
+                  >
+                    <span className="font-medium">{s.title}</span>
+                    <span className="text-xs text-muted text-right">{s.detail}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={handleRecover}
+              className="w-full text-left px-4 py-2.5 border-t border-line text-forest font-medium hover:bg-forest-soft transition-colors"
+              id="sim-quick-recover-btn"
+            >
+              Back to normal traffic
+            </button>
           </div>
         </>
       )}

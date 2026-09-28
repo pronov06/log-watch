@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert } from '../types';
-import { formatPct, formatZ, getSeverityBg } from '../lib/format';
-import { ShieldAlert, X } from 'lucide-react';
+import { formatPct, formatZ } from '../lib/format';
+import { X } from 'lucide-react';
 
 interface AlertToastProps {
   alerts: Alert[];
@@ -48,51 +48,28 @@ export const AlertToast: React.FC<AlertToastProps> = ({ alerts }) => {
   if (!toasts.length) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
+    <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-50 flex flex-col gap-2 sm:w-96 pointer-events-none" role="status">
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto p-4 rounded-xl glass-panel-glow border shadow-2xl transition-all duration-300 transform translate-y-0 ${
-            toast.severity === 'CRITICAL'
-              ? 'border-rose-500/80 bg-slate-900/95 shadow-rose-950/40'
-              : 'border-amber-500/80 bg-slate-900/95 shadow-amber-950/40'
-          }`}
+          className="pointer-events-auto bg-ink text-cream border-l-[3px] border-sev-critical px-4 py-3 shadow-[0_10px_30px_-12px_rgba(0,0,0,0.5)]"
         >
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-2.5">
-              <div
-                className={`p-1.5 rounded-lg ${
-                  toast.severity === 'CRITICAL' ? 'bg-rose-500/20 text-rose-400' : 'bg-amber-500/20 text-amber-400'
-                }`}
-              >
-                <ShieldAlert className="w-4 h-4 animate-bounce" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded border uppercase ${getSeverityBg(
-                      toast.severity
-                    )}`}
-                  >
-                    {toast.severity} ALERT
-                  </span>
-                  <span className="text-[11px] font-mono text-slate-400">
-                    Z={formatZ(toast.z_score)}σ
-                  </span>
-                </div>
-                <h4 className="text-xs font-semibold text-slate-100">{toast.title}</h4>
-                <div className="mt-1 text-[11px] text-slate-400 font-mono">
-                  Rate: <span className="text-rose-400 font-bold">{formatPct(toast.error_rate)}</span> |
-                  Baseline: {formatPct(toast.baseline_mean)}
-                </div>
-              </div>
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-cream/60">
+                New {toast.severity.toLowerCase()} incident · {formatZ(toast.z_score)}σ
+              </p>
+              <p className="text-sm font-medium mt-1">{toast.title}</p>
+              <p className="text-xs font-mono text-cream/70 mt-1">
+                {formatPct(toast.error_rate)} errors, usually {formatPct(toast.baseline_mean)}
+              </p>
             </div>
-
             <button
               onClick={() => dismissToast(toast.id)}
-              className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition-colors"
+              className="text-cream/60 hover:text-cream p-0.5 transition-colors"
+              aria-label="Dismiss"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>

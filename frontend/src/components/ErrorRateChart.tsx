@@ -13,7 +13,6 @@ import {
 } from 'recharts';
 import { MetricPoint, Alert, AppConfig } from '../types';
 import { formatTime } from '../lib/format';
-import { LineChart as ChartIcon } from 'lucide-react';
 
 interface ErrorRateChartProps {
   metrics: MetricPoint[];
@@ -78,39 +77,29 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
   const minAbsRatePct = config?.min_abs_rate ? config.min_abs_rate * 100 : 5.0;
 
   return (
-    <div className="glass-panel p-5 rounded-xl w-full flex flex-col h-[380px]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <ChartIcon className="w-4 h-4 text-sky-400" />
-          <h2 className="text-sm font-semibold tracking-wide text-slate-200">
-            Real-Time Error Rate vs. Baseline Band
-          </h2>
-        </div>
-        <div className="flex items-center gap-4 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 bg-rose-400 rounded-full" />
-            <span className="text-slate-400">Observed Rate ({mainWindow}s)</span>
-          </div>
+    <section className="flex flex-col">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 pb-3 border-b border-ink">
+        <h2 className="text-xl">Error rate against its baseline</h2>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+          <span className="flex items-center gap-1.5">
+            <span className="w-4 h-[2px] bg-sev-critical" /> observed · {mainWindow}s
+          </span>
           {fastWindow > 0 && (
-            <div className="flex items-center gap-1.5" title={`Fast window: alerts only at ${config?.fast_min_severity ?? 'HIGH'} or above`}>
-              <span className="w-3 h-0 border-t-2 border-dashed border-orange-300/80" />
-              <span className="text-slate-400">Fast ({fastWindow}s)</span>
-            </div>
+            <span className="flex items-center gap-1.5" title={`Fast window alerts only at ${config?.fast_min_severity ?? 'HIGH'} or above`}>
+              <span className="w-4 border-t border-dashed border-sev-high" /> fast · {fastWindow}s
+            </span>
           )}
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-2 bg-sky-400/20 border border-sky-400/40 rounded-sm" />
-            <span className="text-slate-400">Baseline Band (3σ)</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 bg-amber-400/60 border-t border-dashed border-amber-400" />
-            <span className="text-slate-400">Min Abs Gate ({minAbsRatePct}%)</span>
-          </div>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-2.5 bg-forest/15 border-t border-forest" /> normal band
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-4 border-t border-dotted border-muted" /> {minAbsRatePct}% floor
+          </span>
         </div>
       </div>
 
       {/* Chart */}
-      <div className="flex-1 w-full min-h-0">
+      <div className="h-[300px] sm:h-[340px] w-full mt-4">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={chartData}
@@ -118,33 +107,33 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
           >
             <defs>
               <linearGradient id="bandGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.25} />
-                <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.02} />
+                <stop offset="5%" stopColor="#2C3E2E" stopOpacity={0.14} />
+                <stop offset="95%" stopColor="#2C3E2E" stopOpacity={0.04} />
               </linearGradient>
               <linearGradient id="rateGlow" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                <stop offset="5%" stopColor="#9B2C1F" stopOpacity={0.2} />
+                <stop offset="95%" stopColor="#9B2C1F" stopOpacity={0} />
               </linearGradient>
             </defs>
 
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+            <CartesianGrid stroke="#D3D3C7" vertical={false} />
 
             <XAxis
               dataKey="timeStr"
-              stroke="#64748b"
+              stroke="#6B6B66"
               fontSize={11}
               tickLine={false}
-              axisLine={{ stroke: '#334155' }}
+              axisLine={{ stroke: '#1F1F1F' }}
               minTickGap={40}
             />
 
             <YAxis
-              stroke="#64748b"
+              stroke="#6B6B66"
               fontSize={11}
               domain={[0, maxY]}
               tickFormatter={(v) => `${v}%`}
               tickLine={false}
-              axisLine={{ stroke: '#334155' }}
+              axisLine={{ stroke: '#1F1F1F' }}
             />
 
             <Tooltip
@@ -152,47 +141,47 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
                 if (!active || !payload || !payload.length) return null;
                 const d = payload[0].payload;
                 return (
-                  <div className="glass-panel p-3 rounded-lg border border-slate-700 shadow-xl text-xs space-y-1">
-                    <div className="font-mono text-slate-400 font-semibold mb-1">{d.timeStr}</div>
+                  <div className="bg-paper border border-line px-3 py-2 text-xs space-y-0.5 shadow-[0_6px_18px_-10px_rgba(31,31,31,0.35)]">
+                    <div className="font-mono text-muted mb-1">{d.timeStr}</div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-slate-400">Observed Rate:</span>
-                      <span className="font-bold text-rose-400">{d.ratePct}%</span>
+                      <span className="text-muted">Observed</span>
+                      <span className="font-mono font-medium text-sev-critical">{d.ratePct}%</span>
                     </div>
                     {d.fastRatePct !== null && (
                       <div className="flex justify-between gap-4">
-                        <span className="text-slate-400">Fast window:</span>
-                        <span className="font-mono text-orange-300">{d.fastRatePct}%</span>
+                        <span className="text-muted">Fast window</span>
+                        <span className="font-mono text-sev-high">{d.fastRatePct}%</span>
                       </div>
                     )}
                     {d.baseline_source && (
                       <div className="flex justify-between gap-4">
-                        <span className="text-slate-400">Reference:</span>
-                        <span className="font-mono text-slate-300">
+                        <span className="text-muted">Reference</span>
+                        <span className="font-mono">
                           {d.baseline_source === 'seasonal' ? 'same time, past days' : 'rolling'}
                         </span>
                       </div>
                     )}
                     {d.baselineMeanPct !== null && (
                       <div className="flex justify-between gap-4">
-                        <span className="text-slate-400">Baseline Mean:</span>
-                        <span className="font-mono text-sky-300">{d.baselineMeanPct}%</span>
+                        <span className="text-muted">Baseline</span>
+                        <span className="font-mono text-forest">{d.baselineMeanPct}%</span>
                       </div>
                     )}
                     {d.upperBandPct !== null && (
                       <div className="flex justify-between gap-4">
-                        <span className="text-slate-400">Upper Threshold:</span>
-                        <span className="font-mono text-indigo-300">{d.upperBandPct}%</span>
+                        <span className="text-muted">Upper band</span>
+                        <span className="font-mono">{d.upperBandPct}%</span>
                       </div>
                     )}
                     {d.z !== null && (
                       <div className="flex justify-between gap-4">
-                        <span className="text-slate-400">Z-Score:</span>
-                        <span className="font-mono font-semibold text-amber-300">{d.z.toFixed(2)}σ</span>
+                        <span className="text-muted">Deviation</span>
+                        <span className="font-mono">{d.z.toFixed(2)}σ</span>
                       </div>
                     )}
-                    <div className="flex justify-between gap-4 pt-1 border-t border-slate-800 text-[11px]">
-                      <span className="text-slate-500">Sample Count:</span>
-                      <span className="text-slate-400 font-mono">{d.errors} / {d.total}</span>
+                    <div className="flex justify-between gap-4 pt-1 mt-1 border-t border-line">
+                      <span className="text-muted">Errors / events</span>
+                      <span className="font-mono">{d.errors} / {d.total}</span>
                     </div>
                   </div>
                 );
@@ -205,10 +194,10 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
                 key={interval.id}
                 x1={interval.x1}
                 x2={interval.x2}
-                fill="#f43f5e"
-                fillOpacity={0.12}
-                stroke="#f43f5e"
-                strokeOpacity={0.4}
+                fill="#9B2C1F"
+                fillOpacity={0.07}
+                stroke="#9B2C1F"
+                strokeOpacity={0.3}
                 strokeDasharray="2 2"
               />
             ))}
@@ -216,8 +205,8 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
             {/* Min Abs Rate Threshold Line */}
             <ReferenceLine
               y={minAbsRatePct}
-              stroke="#f59e0b"
-              strokeDasharray="3 3"
+              stroke="#6B6B66"
+              strokeDasharray="1 3"
               strokeWidth={1}
             />
 
@@ -225,8 +214,8 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
             <Area
               type="monotone"
               dataKey="upperBandPct"
-              stroke="#38bdf8"
-              strokeWidth={1.5}
+              stroke="#2C3E2E"
+              strokeWidth={1}
               fill="url(#bandGradient)"
               isAnimationActive={false}
             />
@@ -236,8 +225,8 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
               <Line
                 type="monotone"
                 dataKey="fastRatePct"
-                stroke="#fdba74"
-                strokeOpacity={0.8}
+                stroke="#B4501F"
+                strokeOpacity={0.75}
                 strokeWidth={1.25}
                 strokeDasharray="4 3"
                 dot={false}
@@ -250,14 +239,14 @@ export const ErrorRateChart: React.FC<ErrorRateChartProps> = ({
             <Line
               type="monotone"
               dataKey="ratePct"
-              stroke="#f43f5e"
-              strokeWidth={2.5}
+              stroke="#9B2C1F"
+              strokeWidth={2}
               dot={false}
               isAnimationActive={false}
             />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </section>
   );
 };

@@ -23,8 +23,7 @@ export const App: React.FC = () => {
   } = useLiveFeed();
 
   return (
-    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col font-sans selection:bg-sky-500/20 selection:text-sky-300">
-      {/* Sticky Header */}
+    <div className="min-h-screen bg-cream text-ink flex flex-col">
       <Header
         connection={connection}
         config={config}
@@ -34,9 +33,7 @@ export const App: React.FC = () => {
         ingestLagMs={latestMetric?.ingest_lag_ms_p95 ?? null}
       />
 
-      {/* Main Dashboard Container */}
-      <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 sm:p-6 space-y-5">
-        {/* Row 1: KPI Summary Metric Cards */}
+      <main className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-8 pb-10">
         <KpiCards
           latestMetric={latestMetric}
           baseline={baseline}
@@ -44,46 +41,29 @@ export const App: React.FC = () => {
           windowSeconds={config?.window_seconds}
         />
 
-        {/* Row 2: Visual Chart & Alert Feed Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Main Chart Area (7 columns on desktop) */}
-          <div className="lg:col-span-7 space-y-5">
-            <ErrorRateChart
-              metrics={metrics}
-              alerts={alerts}
-              config={config}
-            />
-
-            {/* Ingested Log Stream */}
+        {/* Chart + logs on the left, incidents on the right. Slightly wider left column on purpose. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-x-10 gap-y-10 mt-10">
+          <div className="space-y-10 min-w-0">
+            <ErrorRateChart metrics={metrics} alerts={alerts} config={config} />
             <LogTail logs={logs} />
           </div>
-
-          {/* Alert Feed Area (5 columns on desktop) */}
-          <div className="lg:col-span-5">
-            <AlertFeed
-              alerts={alerts}
-              onAcknowledge={acknowledgeAlert}
-            />
+          <div className="min-w-0 lg:border-l lg:border-line lg:pl-10">
+            <AlertFeed alerts={alerts} onAcknowledge={acknowledgeAlert} />
           </div>
         </div>
       </main>
 
-      {/* Floating Alert Toasts for High/Critical Breaches */}
       <AlertToast alerts={alerts} />
 
-      {/* Footer */}
-      <footer className="w-full border-t border-white/5 py-3 px-6 text-center text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span>Accentra Operational Observability Platform</span>
-          <span>•</span>
-          <span className="font-mono text-slate-400">
-            Window: {config?.window_seconds ?? 60}s | Eval: {config?.eval_interval_sec ?? 5}s
+      <footer className="border-t border-line">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+          <span>
+            <span className="font-serif italic text-ink">Accentra</span> — log anomaly detection, built for the hackathon
           </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            Detector Engine Active
+          <span className="font-mono">
+            window {config?.window_seconds ?? 60}s
+            {config?.fast_window_seconds ? ` + ${config.fast_window_seconds}s fast` : ''} · every{' '}
+            {config?.eval_interval_sec ?? 5}s · {config?.baseline_method === 'ewma' ? 'EWMA' : 'median/MAD'}
           </span>
         </div>
       </footer>
