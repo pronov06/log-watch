@@ -1,28 +1,100 @@
 # Accentra — Real-Time Log Anomaly Detector
 
-> A production-grade **Python (FastAPI) + React (TypeScript + Vite)** observability system that tails active log files, computes sliding error rates, learns statistical baselines via EWMA, detects anomalies with multi-threshold Z-scores, visualizes live data via WebSocket streaming with polling fallback, and publishes structured alerts to AWS CloudWatch Logs & SNS.
+> **Python (FastAPI) + React (TypeScript + Vite)** observability service. It tails live log files (your real ones or a built-in traffic generator), computes a rolling error rate over a sliding window, learns a baseline with EWMA, detects deviations with z-scores and assigns a severity. Alerts stream to the browser over WebSocket (with polling fallback) and are published to **AWS CloudWatch Logs, SNS and CloudWatch Metrics/Alarms**.
+
+Measured on a laptop with the live smoke test (`make smoke`): **alert on the dashboard 1.6 s after an error spike starts** (budget 4 s with 1 s evaluation), **ingest lag p95 ≈ 110 ms** from a line being written to it being analysed.
 
 ---
 
-## ⚡ 5-Line Quick Start
+## ⚡ Quick start (local, three terminals)
+
+Backend and generator must point at the **same** log file (the simulator control file lives next to it).
 
 ```bash
-# 1. Clone & Enter
-cd Accentra
+# 1. Backend  (bash; PowerShell: $env:LOG_FILE_PATH="../data/app.log"; python -m uvicorn app.main:app --port 8000)
+cd backend && pip install -r requirements.txt
+LOG_FILE_PATH=../data/app.log python -m uvicorn app.main:app --port 8000
 
-# 2. Run backend tests (70/70 unit & E2E tests pass)
-cd backend && python -m pytest -v && cd ..
-
-# 3. Start Backend in one terminal
-cd backend && python -m uvicorn app.main:app --port 8000 --reload
-
-# 4. Start Log Traffic Generator in a second terminal
+# 2. Traffic generator
 cd backend && python -m simulator.generate_logs --file ../data/app.log --rps 30 --base-error 0.02
 
-# 5. Start Frontend Dashboard in a third terminal
-cd frontend && npm run dev
-# Open http://localhost:5173
+# 3. Dashboard
+cd frontend && npm install && npm run dev        # http://localhost:5173
 ```
+
+With `make`: `make dev-backend`, `make dev-sim`, `make dev-frontend`, `make test`, `make smoke`.
+
+## 🐳 Docker
+
+```bash
+docker compose up --build -d          # backend + generator + dashboard → http://localhost:5173
+docker compose ps                     # backend/frontend report (healthy) via /api/ready
+```
+
+Containers run as non-root, the backend healthcheck gates on readiness, and the app logs are JSON lines (`LOG_JSON=true`).
+
+---
+
+## 📡 Monitoring real logs
+
+Point `LOG_SOURCES` at files and/or globs (comma-separated). New files that match a glob are picked up automatically, and rotation (rename or copytruncate) and truncation are handled. Files that exist at startup are tailed from the end, so a restart never replays history. Files created later are read from their first byte.
+
+```bash
+# Local
+LOG_SOURCES="/var/log/nginx/access.log,/srv/app/logs/*.log" ENABLE_SIM=false \
+  python -m uvicorn app.main:app --port 8000
+
+# Docker: host directory is mounted read-only at /var/log/host
+HOST_LOG_DIR=/var/log/nginx LOG_SOURCES='/var/log/host/*.log' ENABLE_SIM=false \
+  docker compose up --build -d backend frontend
+```
+
+Formats are auto-detected per line (`LOG_FORMAT=auto`), so one instance can follow mixed files:
+
+| Format | Example | Level |
+|---|---|---|
+| JSON / ECS | `{"ts":"…","level":"error","service":"cart","msg":"…"}` | `level` / `severity` / `log.level` |
+| key=value | `2026-09-28T10:15:03Z ERROR service=api msg="…"` | level token |
+| Python `logging` | `2026-09-28 10:15:03,412 ERROR app.db: …` or `… - app.db - ERROR - …` | levelname |
+| nginx / apache | `10.0.0.1 - - [28/Sep/2026:10:15:03 +0000] "GET /pay HTTP/1.1" 502 …` | 5xx → ERROR, 4xx → WARNING |
+| syslog 5424 / 3164 | `<11>1 2026-… host sshd …` / `Sep 28 10:15:03 host app[1]: …` | PRI, else keywords |
+
+`/api/health` shows the files being tailed, lines read/dropped, parse failures and latency.
+
+---
+
+## ☁️ AWS (CloudWatch Logs, SNS, Metrics, Alarms)
+
+`PUBLISH_MODE=dry_run` (default) prints alerts locally, so no AWS account is needed. For real publishing:
+
+```bash
+aws configure                                               # your credentials, never stored in this repo
+ALERT_EMAIL=you@example.com AWS_REGION=ap-south-1 bash infra/aws-setup.sh
+```
+
+`infra/aws-setup.sh` deploys `infra/cloudformation.yaml` and prints the values to put in `.env`. The stack creates:
+
+- log group `/hackathon/log-anomaly-detector` with stream `alerts` (one JSON event per OPENED, ESCALATED or RESOLVED alert);
+- SNS topic `log-anomaly-alerts` with an email subscription (confirm the email). Notifications are filtered by `SNS_MIN_SEVERITY`, and RESOLVED messages are filtered by the alert's peak severity;
+- alarm **`accentra-error-rate-high`** on the custom metric `LogAnomaly/ErrorRate`. It fires even if the app's own alerting is down;
+- alarm **`accentra-detector-silent`**, a dead-man's switch that fires after 5 minutes without metrics;
+- a least-privilege managed policy (also in `infra/iam-policy.json`) to attach to the EC2, ECS or user identity that runs the detector.
+
+Then set `PUBLISH_MODE=aws`, `SNS_TOPIC_ARN=…` and restart. Verify with:
+
+```bash
+aws logs filter-log-events --log-group-name /hackathon/log-anomaly-detector --limit 5
+aws cloudwatch list-metrics --namespace LogAnomaly
+```
+
+Publishing is asynchronous and never blocks detection:
+- CloudWatch Logs writes are batched, respecting the 10k-event and 1 MB limits.
+- Metrics are buffered and sent once per `CW_METRICS_INTERVAL_SEC`.
+- Failures retry with exponential backoff and jitter.
+- Every alert card shows each publisher's result (`CW ✓`, `SNS –`, `LOCAL ✓`, or ✗ if it failed).
+- Queued alerts are flushed on shutdown.
+
+**Deploy path (documented, not automated):** run `docker compose up -d backend frontend` on an EC2 instance whose instance profile has the `DetectorPolicyArn` output attached, and mount the host's log directory via `HOST_LOG_DIR`. On ECS, use the same two images with the policy on the task role and ship logs to a shared volume. Put the dashboard behind an ALB with WebSocket idle timeout ≥ 60 s.
 
 ---
 
@@ -30,118 +102,104 @@ cd frontend && npm run dev
 
 ```mermaid
 flowchart TD
-    subgraph Data Sources
-        SIM[Log Simulator<br/>Traffic & Anomaly Generator] -->|appends| LOGFILE[(data/app.log)]
-        EXT[Production Services] -.->|appends| LOGFILE
+    subgraph Sources
+        SIM[Traffic generator] -->|appends| LOGFILE[(app.log)]
+        REAL[nginx / app / syslog files] -->|appends| LOGFILE2[(LOG_SOURCES globs)]
     end
-
-    subgraph Backend Engine [FastAPI Engine :8000]
-        TAILER[Async Tailer<br/>Offset & Inode Tracking] -->|raw lines| PARSER[Log Parser<br/>Text & JSON Auto-Detect]
-        PARSER -->|LogEvents| WINDOW[Sliding Window<br/>1-sec Buckets, 60s Depth]
-        
-        WINDOW -->|eval tick: 5s| BASELINE[EWMA Baseline Tracker<br/>Mean, Variance, Std Floor, Freeze]
-        BASELINE --> DETECTOR[Anomaly Detector<br/>Z-Score + Reliability Gate]
-        DETECTOR --> ALERTS[Alert Manager<br/>Hysteresis State Machine]
-        
-        ALERTS --> BUS[In-Memory Event Bus<br/>Ring Buffer + Seq Numbers]
-        WINDOW --> BUS
-        PARSER -->|sampled ~10/s| BUS
-        
-        BUS --> DISPATCHER[Publisher Dispatcher<br/>Queue + Exponential Retry]
+    subgraph Backend [FastAPI :8000]
+        TAILER[MultiTailer<br/>byte offsets, rotation, globs] --> PARSER[Parser<br/>JSON · kv · python · nginx · syslog]
+        PARSER --> WINDOW[Sliding window<br/>1 s buckets]
+        WINDOW -->|every EVAL_INTERVAL| BASELINE[EWMA baseline<br/>warm-up · std floor · freeze]
+        BASELINE --> DETECTOR[Z-score + abs-rate gate<br/>→ severity]
+        DETECTOR --> ALERTS[Alert manager<br/>confirm · escalate · resolve · cooldown]
+        ALERTS --> BUS[Event bus<br/>seq + boot_id ring buffer]
+        ALERTS --> DISPATCH[Dispatcher<br/>batch · retry+jitter · flush]
+        WINDOW -->|metric points| METRICS[CloudWatch metrics reporter]
     end
-
-    subgraph Alert Publishing [AWS & Local]
-        DISPATCHER --> CONSOLE[Console Publisher<br/>Dry-Run Pretty-Print]
-        DISPATCHER --> CW[AWS CloudWatch Logs<br/>/hackathon/log-anomaly-detector]
-        DISPATCHER --> SNS[AWS SNS Topic<br/>Email / PagerDuty]
-    end
-
-    subgraph Frontend Dashboard [React + Vite :5173]
-        BUS -->|WebSocket /ws| FEED[useLiveFeed Hook<br/>Auto-reconnect & Polling Fallback]
-        FEED --> HEADER[Header & Sim Controls]
-        FEED --> KPIS[KPI Summary Cards]
-        FEED --> CHART[Composed Chart: Rate vs Baseline Band]
-        FEED --> AFEED[Live Alert Feed & Ack]
-        FEED --> LOGS[Live Monospace Log Tail]
-    end
+    DISPATCH --> CWL[CloudWatch Logs] & SNSN[SNS] & CON[Console]
+    METRICS --> CWM[CloudWatch Metrics → Alarms → SNS]
+    DISPATCH -->|publish_status| BUS
+    BUS -->|/ws push · /api/poll fallback| UI[React dashboard]
 ```
+
+Realtime transport:
+- Clients get a snapshot on connect, then pushed `metric`, `alert`, `alert_update`, `baseline` and `log` envelopes, plus a heartbeat every 15 s.
+- If the WebSocket keeps failing, the dashboard switches to polling `/api/poll?since_seq=` and keeps retrying the socket with exponential backoff.
+- A `boot_id` lets clients notice a backend restart and rewind their cursor, so the page recovers without a reload.
+- The header shows the connection mode, the age of the last event (red when stale) and ingest lag p95.
 
 ---
 
-## ⚙️ Configuration (`.env`)
+## ⚙️ Configuration (`.env`, see `.env.example`)
+
+Invalid values stop the process at startup with a readable message, for example `Z thresholds must increase`.
 
 | Variable | Default | Description |
 |---|---|---|
-| `LOG_FILE_PATH` | `./data/app.log` | Path to target log file |
-| `LOG_FORMAT` | `auto` | Parsing format (`auto`, `text`, or `json`) |
-| `WINDOW_SECONDS` | `60` | Length of sliding window in seconds |
-| `EVAL_INTERVAL_SEC` | `5` | Frequency of evaluation loop in seconds |
-| `MIN_EVENTS_IN_WINDOW` | `20` | Reliability floor to prevent false alarms on sparse traffic |
-| `BASELINE_WARMUP_SAMPLES` | `24` | Warmup samples before anomaly detection starts (24 × 5s = 2 min) |
-| `BASELINE_ALPHA` | `0.05` | EWMA smoothing factor |
-| `BASELINE_MIN_STD` | `0.01` | Std floor to prevent division-by-zero on flat baselines |
-| `FREEZE_BASELINE_DURING_ALERT` | `true` | Prevents active spikes from poisoning the baseline |
-| `Z_LOW` / `Z_MEDIUM` / `Z_HIGH` / `Z_CRITICAL` | `3.0 / 4.5 / 6.5 / 9.0` | Z-score severity classification boundaries |
-| `MIN_ABS_RATE` | `0.05` | Minimum absolute error rate (5%) required to open an alert |
-| `CONFIRM_TICKS` | `2` | Consecutive breaching ticks required to open alert (anti-flapping) |
-| `RESOLVE_TICKS` | `3` | Consecutive calm ticks required to resolve alert |
-| `ALERT_COOLDOWN_SEC` | `120` | Minimum cooldown period after resolution |
-| `PUBLISH_MODE` | `dry_run` | `dry_run` (stdout) or `aws` (CloudWatch + SNS) |
-| `AWS_REGION` | `ap-south-1` | Target AWS region |
+| `LOG_FILE_PATH` | `./data/app.log` | Primary log file (the simulator writes here) |
+| `LOG_SOURCES` | *(empty)* | Extra files/globs, comma-separated |
+| `LOG_FORMAT` | `auto` | `auto`, `text`, `json`, `python`, `nginx`, `syslog` |
+| `WINDOW_SECONDS` / `EVAL_INTERVAL_SEC` | `60` / `5` | Sliding window length / evaluation cadence |
+| `MIN_EVENTS_IN_WINDOW` | `20` | Skip evaluation on sparse traffic (no 1-of-2 = 50 % false alarms) |
+| `BASELINE_WARMUP_SAMPLES` / `BASELINE_ALPHA` / `BASELINE_MIN_STD` | `24` / `0.05` / `0.01` | Warm-up, EWMA smoothing, std floor |
+| `BASELINE_PATH` | `./data/baseline.json` | Persisted baseline (restarts skip warm-up) |
+| `Z_LOW` / `Z_MEDIUM` / `Z_HIGH` / `Z_CRITICAL` | `3 / 4.5 / 6.5 / 9` | Severity boundaries |
+| `MIN_ABS_RATE` / `ABS_RATE_CRITICAL` | `0.05` / `0.50` | Absolute floor / always-critical rate |
+| `CONFIRM_TICKS` / `RESOLVE_TICKS` / `ALERT_COOLDOWN_SEC` | `2` / `3` / `120` | Hysteresis |
+| `PUBLISH_MODE` | `dry_run` | `dry_run` or `aws` |
+| `SNS_TOPIC_ARN` / `SNS_MIN_SEVERITY` | – / `MEDIUM` | SNS target and filter |
+| `CW_METRICS_ENABLED` / `CW_METRICS_INTERVAL_SEC` | `true` / `60` | Custom metrics (aws mode) |
+| `PUBLISH_MAX_RETRIES` / `PUBLISH_BACKOFF_BASE_SEC` | `3` / `1.0` | Dispatcher retry policy |
+| `LOG_JSON` / `APP_LOG_LEVEL` | `false` / `INFO` | The detector's own logs |
+| `ENABLE_SIM` | `true` | Enables `/api/sim/*` (turn off in production) |
 
----
+## 🔌 API
 
-## 🎬 3-Minute Live Demo Script
-
-1. **(0:00 - Baseline Learning)**
-   - Open http://localhost:5173.
-   - Point out the KPI cards: EWMA baseline is learning (`12/24` samples), observed rate is ~2.0%.
-   - Show the live log tail streaming formatted events.
-2. **(0:30 - Anomaly Injection)**
-   - Click the **Simulate ▾** dropdown in the header and choose **Error Spike (35%)**.
-   - Watch the red line on the chart surge above the cyan baseline band and breach the 5% gate.
-3. **(0:50 - Multi-Channel Alert & Root Cause)**
-   - The alert card slides into the Alert Feed with **MEDIUM** or **HIGH** severity.
-   - Highlight the root causes: **Top Errors in Window** automatically extracts error templates (e.g. `DB connection timeout ×142`).
-   - Show the AWS delivery checkmarks (`CW ✓`, `SNS ✓`).
-4. **(1:30 - Recovery & Anti-Poisoning)**
-   - Click **Recover** in the header.
-   - Traffic normalizes; after 3 calm ticks, the alert shifts to **RESOLVED (duration: ~45s)**.
-   - Point out that the baseline did **not** get corrupted by the spike because baseline updates were frozen during the breach!
-5. **(2:15 - Network Resilience)**
-   - Stop the backend process: the header connection pill changes to amber **RECONNECTING...** and then blue **FALLBACK (POLLING)**.
-   - Restart the backend: the client seamlessly recovers to **LIVE (WS)** without reloading the page.
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/health` | Liveness: sources, lines read/dropped, parse failures, baseline, latency, publisher stats |
+| `GET /api/ready` | Readiness (503 until the pipeline runs and a source is tailed) |
+| `WS /ws` | Snapshot + live envelopes |
+| `GET /api/poll?since_seq=N` | Polling fallback (`envelopes`, `latest_seq`, `boot_id`) |
+| `GET /api/metrics`, `/api/alerts`, `/api/alerts/active`, `/api/logs/recent`, `/api/config` | Hydration |
+| `POST /api/alerts/{id}/ack` | Acknowledge (broadcast to all clients) |
+| `POST /api/sim/spike` `{scenario, error_ratio, duration_sec}` / `POST /api/sim/recover` | Demo scenarios: `spike`, `ramp`, `flood` (×10 volume), `outage` (errors then silence), `flapping` |
 
 ---
 
 ## 🧪 Testing
 
-All 70 backend unit and end-to-end integration tests run in under 5 seconds:
-
 ```bash
-cd backend
-python -m pytest -v
+cd backend && python -m pytest -q      # 117 unit/integration tests (~20 s), AWS via moto
+python scripts/smoke_realtime.py       # live E2E: real server + generator + WebSocket (~1 min)
 ```
 
-Tests cover:
-- **Log parser:** Standard text, JSON lines, log level normalization, malformed lines, missing fields.
-- **Sliding window:** Bucket eviction, rolling rates, events/sec, top errors counter, cleanup.
-- **EWMA baseline:** Warmup gating, alpha convergence, freeze on anomaly, standard deviation floor, JSON disk persistence.
-- **Detector & severity:** Z-score boundary transitions, minimum rate gate, reliability gate.
-- **Alert manager:** Confirm ticks, escalation without duplicate events, calm resolution, cooldown flap protection.
-- **Publishers:** Console dry-run, mocked CloudWatch Logs structured JSON, mocked SNS topic dispatch, dispatcher retry with exponential backoff.
-- **End-to-End:** Full asynchronous pipeline simulation with synthetic anomalies and event bus validation.
+What the tests cover:
+- **Parser:** every format, plus timezone handling.
+- **Tailer:** CRLF and split UTF-8, rename rotation, truncation, late-created files, glob discovery.
+- **Detection logic:** window, baseline, detector and alert lifecycle.
+- **Event bus:** restart `boot_id`, `alert_update`, backpressure.
+- **Publishers:** CloudWatch Logs batching and stream re-creation, SNS severity filter, retries, publish status, shutdown flush, metrics.
+- **Simulator scenarios.**
+- **Startup and runtime:** config validation, readiness, JSON logging.
+- **Infra contracts:** the CloudFormation alarms watch the metrics the code actually sends, the IAM policies are least-privilege, and the compose file is hardened.
 
----
+The smoke test asserts:
+- an OPENED alert arrives over `/ws` within `EVAL + CONFIRM_TICKS×EVAL + 1 s`, with a severity consistent with its z-score;
+- `/api/poll` returns the same alert;
+- the dry-run publisher delivered it;
+- the alert resolves after the spike.
 
-## 🐳 Docker Deployment
+## 🎬 3-minute demo
 
-To launch the complete stack with Docker Compose:
+1. **Warm-up (0:00).** Open the dashboard. The KPI card shows the baseline learning progress. The header shows `LIVE (WS)`, the last-event age and lag p95.
+2. **Spike (0:30).** Choose **Simulate → Error Spike**. The rate line leaves the baseline band, and an alert card and toast appear within seconds, marked "detected in N s". The top errors explain the cause.
+3. **Delivery (1:00).** The per-publisher badges on the card show the real result. In AWS mode, show the alert in CloudWatch Logs and the SNS email.
+4. **Recovery (1:30).** After the spike, 3 calm ticks resolve the alert. The baseline stayed frozen, so it was not poisoned.
+5. **Resilience (2:15).** Stop the backend: the header shows **RECONNECTING**, then **POLLING**. Restart it: back to **LIVE** without reloading the page.
 
-```bash
-# Production compose with backend, simulator, and frontend
-docker compose up --build -d
+## Known limitations
 
-# Check running services
-docker compose ps
-```
+- A single global error-rate detector. Per-service breakdown and volume anomalies are not implemented, although the `flood` scenario raises volume ×10.
+- The event bus is in-memory: alert history is kept for the life of the process. Durable history lives in CloudWatch Logs.
+- RFC 3164 syslog has no year or zone, so UTC and the current year are assumed. Naive timestamps are treated as UTC for the ingest-lag metric.
