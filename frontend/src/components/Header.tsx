@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-[1440px] mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-4">
         {/* Wordmark */}
         <div className="flex items-baseline gap-3 min-w-0">
-          <h1 className="font-serif text-[26px] leading-none tracking-tight">Log Pulse</h1>
+          <h1 className="font-serif text-[26px] leading-none tracking-tight">Log Watch</h1>
           <span className="hidden md:inline text-[13px] text-muted truncate">
             watching your logs so you don&rsquo;t have to
           </span>
