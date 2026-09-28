@@ -164,54 +164,55 @@ def run_generator(
         print(f"[Simulator] Scenario '{scenario}' at t+{scenario_at}s for {scenario_duration}s")
 
     line_count = 0
-    batch_size = max(1, int(rps / 5))  # Write in batches ~5 times per second
 
     try:
         while True:
             elapsed = time.time() - start_time
 
-            # Determine current error ratio
-            current_error = base_error
+            # Determine current error ratio and volume multiplier
+            current_error, rps_mult = base_error, 1.0
 
             # Check scheduled scenario
             if scenario and elapsed >= scenario_at:
                 scenario_elapsed = elapsed - scenario_at
                 if scenario_elapsed < scenario_duration:
-                    current_error = _apply_scenario(
+                    current_error, rps_mult = _apply_scenario(
                         scenario, base_error, scenario_error_ratio,
                         scenario_elapsed, scenario_duration,
                     )
 
-            # Check real-time control file (from UI button)
-            current_error = _check_control(
-                control_path, current_error, base_error, scenario_error_ratio,
-            )
+            # Real-time control file (UI button) overrides the schedule while active
+            control = _check_control(control_path, base_error, scenario_error_ratio)
+            if control is not None:
+                current_error, rps_mult = control
+
+            if rps_mult <= 0:  # outage tail: the service has gone silent
+                time.sleep(0.2)
+                continue
 
             # Add a small sine-wave pattern (fake daily fluctuation)
             sine_factor = 1.0 + 0.1 * math.sin(elapsed * 2 * math.pi / 300)
-            actual_rps = rps * sine_factor
+            actual_rps = rps * rps_mult * sine_factor
+            batch_size = max(1, int(actual_rps / 5))  # write ~5 batches per second
 
-            # Generate and write a batch
-            lines = []
-            for _ in range(batch_size):
-                lines.append(generate_line(error_ratio=current_error))
-
+            lines = [generate_line(error_ratio=current_error) for _ in range(batch_size)]
             with open(path, "a", encoding="utf-8") as f:
-                for line in lines:
-                    f.write(line + "\n")
+                f.write("\n".join(lines) + "\n")
                 f.flush()
 
+            prev = line_count
             line_count += len(lines)
+            if line_count // 500 != prev // 500:
+                print(f"[Simulator] {line_count} lines written, error_ratio={current_error:.2%}, "
+                      f"rps={actual_rps:.0f}, elapsed={elapsed:.0f}s", flush=True)
 
-            if line_count % 100 == 0:
-                print(f"[Simulator] {line_count} lines written, error_ratio={current_error:.2%}, elapsed={elapsed:.0f}s")
-
-            # Sleep to match target rps
-            sleep_time = batch_size / actual_rps
-            time.sleep(sleep_time)
+            time.sleep(batch_size / actual_rps)
 
     except KeyboardInterrupt:
         print(f"\n[Simulator] Stopped after {line_count} lines")
+
+
+SCENARIOS = ("spike", "ramp", "flood", "outage", "flapping")
 
 
 def _apply_scenario(
@@ -220,64 +221,58 @@ def _apply_scenario(
     spike_error: float,
     elapsed: float,
     duration: float,
-) -> float:
-    """Apply a named anomaly scenario."""
+) -> tuple[float, float]:
+    """Return (error_ratio, rps_multiplier) for a named anomaly scenario at `elapsed` seconds."""
     if scenario == "spike":
-        return spike_error
-    elif scenario == "ramp":
-        # Gradually increase error rate
+        return spike_error, 1.0
+    if scenario == "ramp":
         progress = min(elapsed / duration, 1.0)
-        return base_error + (spike_error - base_error) * progress
-    elif scenario == "flood":
-        # High volume with moderate errors
-        return base_error * 3
-    elif scenario == "outage":
-        if elapsed < duration * 0.7:
-            return 0.95  # Almost all errors
-        else:
-            return 0.0  # Then silence (no lines)
-    elif scenario == "flapping":
-        # Alternate between spike and normal every 15 seconds
+        return base_error + (spike_error - base_error) * progress, 1.0
+    if scenario == "flood":
+        # Volume x10 with somewhat more errors (retries and timeouts under load)
+        return min(1.0, base_error * 3), 10.0
+    if scenario == "outage":
+        # Hard failure: nearly everything errors, then the service stops logging entirely
+        return (0.95, 1.0) if elapsed < duration * 0.7 else (base_error, 0.0)
+    if scenario == "flapping":
         cycle = int(elapsed / 15)
-        return spike_error if cycle % 2 == 0 else base_error
-    else:
-        return base_error
+        return (spike_error if cycle % 2 == 0 else base_error), 1.0
+    return base_error, 1.0
 
 
 def _check_control(
     control_path: Path,
-    current_error: float,
     base_error: float,
     spike_error: float,
-) -> float:
-    """Check the sim_control.json file for real-time commands from the UI."""
-    if not control_path.exists():
-        return current_error
+) -> tuple[float, float] | None:
+    """
+    Read sim_control.json (written by POST /api/sim/spike from the UI).
 
+    Returns (error_ratio, rps_multiplier) while a scenario is active, else None.
+    """
+    if not control_path.exists():
+        return None
     try:
         data = json.loads(control_path.read_text(encoding="utf-8"))
-        action = data.get("action", "")
-
-        if action == "spike":
-            error_ratio = data.get("error_ratio", spike_error)
-            duration = data.get("duration_sec", 60)
-            started = data.get("started_at", 0)
-
-            if started and (time.time() - started) > duration:
-                # Spike expired, auto-recover
-                control_path.write_text(
-                    json.dumps({"action": "recover"}), encoding="utf-8"
-                )
-                return base_error
-            return error_ratio
-
-        elif action == "recover":
-            return base_error
-
     except (json.JSONDecodeError, OSError):
-        pass
+        return None  # mid-write; try again next batch
 
-    return current_error
+    if data.get("action") != "spike":
+        return None
+
+    duration = float(data.get("duration_sec", 60))
+    elapsed = time.time() - float(data.get("started_at", 0) or 0)
+    if elapsed > duration:
+        try:
+            control_path.write_text(json.dumps({"action": "recover"}), encoding="utf-8")
+        except OSError:
+            pass
+        return None
+
+    return _apply_scenario(
+        data.get("scenario", "spike"), base_error,
+        float(data.get("error_ratio", spike_error)), elapsed, duration,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +284,7 @@ def main():
     parser.add_argument("--file", default="./data/app.log", help="Output log file path")
     parser.add_argument("--rps", type=float, default=30, help="Lines per second")
     parser.add_argument("--base-error", type=float, default=0.02, help="Base error ratio (0-1)")
-    parser.add_argument("--scenario", choices=["spike", "ramp", "flood", "outage", "flapping"],
+    parser.add_argument("--scenario", choices=SCENARIOS,
                         help="Anomaly scenario to inject")
     parser.add_argument("--at", type=float, default=30, help="Seconds after start to begin scenario")
     parser.add_argument("--duration", type=float, default=60, help="Scenario duration in seconds")

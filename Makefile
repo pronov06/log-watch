@@ -6,14 +6,17 @@ NPM ?= npm
 test:
 	cd backend && $(PYTHON) -m pytest -v
 
+# Backend and simulator must agree on the log file (the sim control file lives next to it).
+LOG_FILE ?= ../data/app.log
+
 dev-backend:
-	cd backend && $(PYTHON) -m uvicorn app.main:app --reload --port 8000
+	cd backend && LOG_FILE_PATH=$(LOG_FILE) $(PYTHON) -m uvicorn app.main:app --reload --port 8000
 
 dev-frontend:
 	cd frontend && $(NPM) run dev
 
 dev-sim:
-	cd backend && $(PYTHON) -m simulator.generate_logs --file ../data/app.log --rps 30 --base-error 0.02
+	cd backend && $(PYTHON) -m simulator.generate_logs --file $(LOG_FILE) --rps 30 --base-error 0.02
 
 build:
 	cd frontend && $(NPM) run build
@@ -27,7 +30,7 @@ down:
 sim-spike:
 	curl -X POST http://localhost:8000/api/sim/spike \
 		-H "Content-Type: application/json" \
-		-d '{"duration_sec": 60, "error_ratio": 0.35, "scenario": "spike"}'
+		-d '{"duration_sec": 60, "error_ratio": 0.35, "scenario": "$(or $(SCENARIO),spike)"}'
 
 aws-setup:
 	bash infra/aws-setup.sh

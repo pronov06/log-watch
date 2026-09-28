@@ -22,7 +22,9 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 from app import parser
 
@@ -36,8 +38,14 @@ class AckRequest(BaseModel):
 
 
 class SimSpikeRequest(BaseModel):
-    duration_sec: int = 60
-    error_ratio: float = 0.35
+    duration_sec: int = Field(60, ge=1, le=3600)
+    error_ratio: float = Field(0.35, ge=0.0, le=1.0)
+    scenario: Literal["spike", "ramp", "flood", "outage", "flapping"] = "spike"
+
+
+def _sim_control_path(cfg) -> Path:
+    # The generator polls the control file next to the log it writes (see simulator).
+    return Path(cfg.log_file_path).parent / "sim_control.json"
 
 
 # ---------------------------------------------------------------------------
@@ -152,18 +160,19 @@ async def sim_spike(body: SimSpikeRequest, request: Request):
     if not cfg.enable_sim:
         raise HTTPException(status_code=403, detail="Simulator not enabled")
 
-    control_path = Path("./data/sim_control.json")
+    control_path = _sim_control_path(cfg)
     control_path.parent.mkdir(parents=True, exist_ok=True)
     control_path.write_text(json.dumps({
         "action": "spike",
+        "scenario": body.scenario,
         "error_ratio": body.error_ratio,
         "duration_sec": body.duration_sec,
         "started_at": time.time(),
     }), encoding="utf-8")
 
-    logger.info("Sim spike triggered: ratio=%.2f duration=%ds",
-                body.error_ratio, body.duration_sec)
-    return {"status": "ok", "action": "spike", "duration_sec": body.duration_sec}
+    logger.info("Sim %s triggered: ratio=%.2f duration=%ds",
+                body.scenario, body.error_ratio, body.duration_sec)
+    return {"status": "ok", "action": "spike", "scenario": body.scenario, "duration_sec": body.duration_sec}
 
 
 @router.post("/sim/recover")
@@ -173,7 +182,7 @@ async def sim_recover(request: Request):
     if not cfg.enable_sim:
         raise HTTPException(status_code=403, detail="Simulator not enabled")
 
-    control_path = Path("./data/sim_control.json")
+    control_path = _sim_control_path(cfg)
     if control_path.exists():
         control_path.write_text(json.dumps({"action": "recover"}), encoding="utf-8")
 
