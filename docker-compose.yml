@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: accentra-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - LOG_FILE_PATH=/app/data/app.log
+      - PUBLISH_MODE=${PUBLISH_MODE:-dry_run}
+      - AWS_REGION=${AWS_REGION:-ap-south-1}
+      - CW_LOG_GROUP=/hackathon/log-anomaly-detector
+      - CW_LOG_STREAM=alerts
+      - SNS_TOPIC_ARN=${SNS_TOPIC_ARN:-}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:8000
+      - ENABLE_SIM=true
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  simulator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: accentra-simulator
+    command: python -m simulator.generate_logs --file /app/data/app.log --rps 25 --base-error 0.02
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: accentra-frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  localstack:
+    image: localstack/localstack:latest
+    container_name: accentra-localstack
+    profiles: ["aws-local"]
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=logs,sns
+      - DEFAULT_REGION=ap-south-1

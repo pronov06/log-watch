@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Accentra Real-Time Log Anomaly Detector Infrastructure - CloudWatch Logs & SNS'
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Default: 'alerts@example.com'
+    Description: 'Email address to receive high-severity anomaly alerts via SNS'
+  LogRetentionDays:
+    Type: Number
+    Default: 7
+    Description: 'CloudWatch Logs retention period in days'
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: '/hackathon/log-anomaly-detector'
+      RetentionInDays: !Ref LogRetentionDays
+
+  LogStream:
+    Type: AWS::Logs::LogStream
+    Properties:
+      LogGroupName: !Ref LogGroup
+      LogStreamName: 'alerts'
+
+  AlertSnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: 'log-anomaly-alerts'
+      DisplayName: 'Accentra Log Anomaly Alerts'
+
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertSnsTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+Outputs:
+  LogGroupName:
+    Value: !Ref LogGroup
+    Description: 'CloudWatch Log Group Name'
+  LogStreamName:
+    Value: !Ref LogStream
+    Description: 'CloudWatch Log Stream Name'
+  SnsTopicArn:
+    Value: !Ref AlertSnsTopic
+    Description: 'SNS Topic ARN for alerts'
