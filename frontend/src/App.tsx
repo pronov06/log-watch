@@ -41,6 +41,7 @@ export const App: React.FC = () => {
           latestMetric={latestMetric}
           baseline={baseline}
           activeAlerts={activeAlerts}
+          windowSeconds={config?.window_seconds}
         />
 
         {/* Row 2: Visual Chart & Alert Feed Grid */}

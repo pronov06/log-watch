@@ -155,3 +155,24 @@ class TestNoneResult:
         am = AlertManager(cfg)
         events = am.process(None)
         assert events == []
+
+
+def test_escalated_and_resolved_carry_detection_latency():
+    """The UI shows the latest event per alert id, so lifecycle fields must be carried forward."""
+    from app.alerts import AlertManager
+    from app.config import Settings
+    from app.models import DetectionResult, Severity
+
+    cfg = Settings(confirm_ticks=1, resolve_ticks=1, alert_cooldown_sec=0)
+    mgr = AlertManager(cfg)
+
+    def tick(sev):
+        return DetectionResult(ts="t", rate=0.3, z=5, severity=sev, breaching=sev > Severity.NONE,
+                               baseline_mean=0.02, baseline_std=0.01, window_total=100, window_errors=30)
+
+    opened = mgr.process(tick(Severity.MEDIUM))[0]
+    opened.detection_latency_sec = 1.5  # set by the pipeline on OPENED
+    escalated = mgr.process(tick(Severity.CRITICAL))[0]
+    resolved = mgr.process(tick(Severity.NONE))[0]
+    assert (escalated.event, resolved.event) == ("ESCALATED", "RESOLVED")
+    assert escalated.detection_latency_sec == resolved.detection_latency_sec == 1.5

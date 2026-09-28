@@ -7,12 +7,14 @@ interface KpiCardsProps {
   latestMetric: MetricPoint | null;
   baseline: BaselineState | null;
   activeAlerts: Alert[];
+  windowSeconds?: number;
 }
 
 export const KpiCards: React.FC<KpiCardsProps> = ({
   latestMetric,
   baseline,
   activeAlerts,
+  windowSeconds = 60,
 }) => {
   const currentRate = latestMetric?.error_rate ?? 0;
   const severity = latestMetric?.severity ?? 'NONE';
@@ -26,7 +28,7 @@ export const KpiCards: React.FC<KpiCardsProps> = ({
       {/* 1. Current Error Rate */}
       <div className="glass-panel p-4 rounded-xl relative overflow-hidden transition-all hover:border-slate-600/60">
         <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-          <span className="font-medium tracking-wide">Error Rate (60s)</span>
+          <span className="font-medium tracking-wide">Error Rate ({windowSeconds}s)</span>
           <AlertCircle className={`w-4 h-4 ${getSeverityColor(severity)}`} />
         </div>
         <div className="flex items-baseline gap-2">

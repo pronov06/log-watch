@@ -39,6 +39,9 @@ export function useLiveFeed() {
   const reconnectTimeoutRef = useRef<number | null>(null);
   const pollingIntervalRef = useRef<number | null>(null);
   const isMountedRef = useRef<boolean>(true);
+  const pollFailingRef = useRef<boolean>(false);
+  const configLoadedRef = useRef<boolean>(false);
+  const connectWsRef = useRef<() => void>(() => {});
 
   // Helper to dedupe and cap alerts
   const handleAlertUpdate = useCallback((alert: Alert) => {
@@ -106,6 +109,7 @@ export function useLiveFeed() {
           }
           if (snap.config) {
             setConfig(snap.config);
+            configLoadedRef.current = true;
           }
           break;
         }
@@ -177,8 +181,22 @@ export function useLiveFeed() {
       for (const env of data.envelopes ?? []) {
         processEnvelope(env);
       }
+      if (!configLoadedRef.current) {
+        const cfg = await fetch('/api/config').then((r) => (r.ok ? r.json() : null));
+        if (cfg && isMountedRef.current) {
+          setConfig(cfg);
+          configLoadedRef.current = true;
+        }
+      }
+      // The server just came back: don't sit out a long WS backoff, upgrade now.
+      if (pollFailingRef.current && !wsRef.current) {
+        pollFailingRef.current = false;
+        if (reconnectTimeoutRef.current) window.clearTimeout(reconnectTimeoutRef.current);
+        connectWsRef.current();
+      }
+      pollFailingRef.current = false;
     } catch {
-      // Backend unreachable; the next interval retries.
+      pollFailingRef.current = true; // backend unreachable; the next interval retries
     }
   }, [processEnvelope]);
 
@@ -252,6 +270,7 @@ export function useLiveFeed() {
       reconnectTimeoutRef.current = window.setTimeout(connectWs, INITIAL_BACKOFF_MS);
     }
   }, [pollFallback, processEnvelope]);
+  connectWsRef.current = connectWs;
 
   // "Last event N s ago" ticker: a live feed that silently stalls is worse than a red badge.
   useEffect(() => {
@@ -275,7 +294,10 @@ export function useLiveFeed() {
         ]);
 
         if (!isMountedRef.current) return;
-        if (cfgRes) setConfig(cfgRes);
+        if (cfgRes) {
+          setConfig(cfgRes);
+          configLoadedRef.current = true;
+        }
         if (Array.isArray(metricsRes) && metricsRes.length > 0) {
           setMetrics(metricsRes.slice(-MAX_METRICS));
           setLatestMetric(metricsRes[metricsRes.length - 1]);

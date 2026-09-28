@@ -159,6 +159,7 @@ class AlertManager:
                         top_errors=top_errors or [],
                         opened_at=state.alert.opened_at if state.alert else now_iso,
                         updated_at=now_iso,
+                        detection_latency_sec=state.alert.detection_latency_sec if state.alert else None,
                     )
                     state.alert = alert
                     events.append(alert)
@@ -198,6 +199,7 @@ class AlertManager:
                         opened_at=state.alert.opened_at if state.alert else now_iso,
                         updated_at=now_iso,
                         resolved_at=now_iso,
+                        detection_latency_sec=state.alert.detection_latency_sec if state.alert else None,
                     )
                     events.append(alert)
                     logger.info("Alert RESOLVED: %s (peak: %s)",
