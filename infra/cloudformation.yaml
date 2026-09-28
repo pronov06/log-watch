@@ -1,34 +1,45 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Accentra Real-Time Log Anomaly Detector Infrastructure - CloudWatch Logs & SNS'
+Description: >-
+  Accentra Real-Time Log Anomaly Detector - CloudWatch Logs (alert stream), SNS (notifications),
+  CloudWatch custom-metric alarms and a least-privilege IAM policy for the detector.
 
 Parameters:
   AlertEmail:
     Type: String
-    Default: 'alerts@example.com'
-    Description: 'Email address to receive high-severity anomaly alerts via SNS'
+    Description: Email address that receives SNS alert notifications (must confirm the subscription)
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
   LogRetentionDays:
     Type: Number
     Default: 7
-    Description: 'CloudWatch Logs retention period in days'
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90]
+    Description: CloudWatch Logs retention for the alert stream
+  ErrorRateAlarmThreshold:
+    Type: Number
+    Default: 0.25
+    Description: Error rate (0-1) above which the CloudWatch alarm fires, independent of the app UI
+  MetricsNamespace:
+    Type: String
+    Default: LogAnomaly
+    Description: Must match the namespace used by the detector's MetricsReporter
 
 Resources:
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: '/hackathon/log-anomaly-detector'
+      LogGroupName: /hackathon/log-anomaly-detector
       RetentionInDays: !Ref LogRetentionDays
 
   LogStream:
     Type: AWS::Logs::LogStream
     Properties:
       LogGroupName: !Ref LogGroup
-      LogStreamName: 'alerts'
+      LogStreamName: alerts
 
   AlertSnsTopic:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: 'log-anomaly-alerts'
-      DisplayName: 'Accentra Log Anomaly Alerts'
+      TopicName: log-anomaly-alerts
+      DisplayName: Accentra Log Anomaly Alerts
 
   EmailSubscription:
     Type: AWS::SNS::Subscription
@@ -37,13 +48,85 @@ Resources:
       Protocol: email
       Endpoint: !Ref AlertEmail
 
+  # Second line of defence: fires from the published ErrorRate metric even if the
+  # detector's own alerting logic or dashboard is down.
+  ErrorRateAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: accentra-error-rate-high
+      AlarmDescription: Rolling error rate reported by the log anomaly detector is above threshold
+      Namespace: !Ref MetricsNamespace
+      MetricName: ErrorRate
+      Dimensions:
+        - Name: Scope
+          Value: global
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 2
+      Threshold: !Ref ErrorRateAlarmThreshold
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertSnsTopic]
+      OKActions: [!Ref AlertSnsTopic]
+
+  # Dead-man's switch: no EventsPerSec datapoints for 5 minutes means the detector
+  # (or the log source it tails) went silent.
+  DetectorSilentAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: accentra-detector-silent
+      AlarmDescription: No metrics from the log anomaly detector for 5 minutes
+      Namespace: !Ref MetricsNamespace
+      MetricName: EventsPerSec
+      Dimensions:
+        - Name: Scope
+          Value: global
+      Statistic: SampleCount
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertSnsTopic]
+      OKActions: [!Ref AlertSnsTopic]
+
+  # Attach to the EC2 instance role / ECS task role / IAM user that runs the detector.
+  DetectorPublishPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Least-privilege permissions for the Accentra log anomaly detector
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: WriteAlertStream
+            Effect: Allow
+            Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+            Resource:
+              - !GetAtt LogGroup.Arn
+              - !Sub '${LogGroup.Arn}:log-stream:*'
+          - Sid: NotifyAlerts
+            Effect: Allow
+            Action: sns:Publish
+            Resource: !Ref AlertSnsTopic
+          - Sid: PublishMetrics
+            Effect: Allow
+            Action: cloudwatch:PutMetricData
+            Resource: '*'
+            Condition:
+              StringEquals:
+                cloudwatch:namespace: !Ref MetricsNamespace
+
 Outputs:
   LogGroupName:
     Value: !Ref LogGroup
-    Description: 'CloudWatch Log Group Name'
+    Description: CW_LOG_GROUP
   LogStreamName:
-    Value: !Ref LogStream
-    Description: 'CloudWatch Log Stream Name'
+    Value: alerts
+    Description: CW_LOG_STREAM
   SnsTopicArn:
     Value: !Ref AlertSnsTopic
-    Description: 'SNS Topic ARN for alerts'
+    Description: SNS_TOPIC_ARN
+  DetectorPolicyArn:
+    Value: !Ref DetectorPublishPolicy
+    Description: Attach this managed policy to the identity that runs the detector

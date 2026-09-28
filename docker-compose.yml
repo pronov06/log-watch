@@ -1,48 +1,64 @@
-version: '3.8'
+# Demo (simulated traffic):   docker compose up --build -d          → http://localhost:5173
+# Real logs, no simulator:    HOST_LOG_DIR=/var/log/nginx LOG_SOURCES='/var/log/host/*.log' ENABLE_SIM=false \
+#                             docker compose up --build -d backend frontend
+# Local AWS emulation:        docker compose --profile aws-local up -d   (set AWS_ENDPOINT_URL=http://localstack:4566)
 
 services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
     container_name: accentra-backend
     ports:
       - "8000:8000"
     environment:
-      - LOG_FILE_PATH=/app/data/app.log
-      - PUBLISH_MODE=${PUBLISH_MODE:-dry_run}
-      - AWS_REGION=${AWS_REGION:-ap-south-1}
-      - CW_LOG_GROUP=/hackathon/log-anomaly-detector
-      - CW_LOG_STREAM=alerts
-      - SNS_TOPIC_ARN=${SNS_TOPIC_ARN:-}
-      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:8000
-      - ENABLE_SIM=true
+      LOG_FILE_PATH: /app/data/app.log
+      # Extra files/globs to tail inside the container, e.g. /var/log/host/*.log
+      LOG_SOURCES: ${LOG_SOURCES:-}
+      LOG_FORMAT: ${LOG_FORMAT:-auto}
+      BASELINE_PATH: /app/data/baseline.json
+      LOG_JSON: ${LOG_JSON:-true}
+      PUBLISH_MODE: ${PUBLISH_MODE:-dry_run}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      CW_LOG_GROUP: ${CW_LOG_GROUP:-/hackathon/log-anomaly-detector}
+      CW_LOG_STREAM: ${CW_LOG_STREAM:-alerts}
+      SNS_TOPIC_ARN: ${SNS_TOPIC_ARN:-}
+      SNS_MIN_SEVERITY: ${SNS_MIN_SEVERITY:-MEDIUM}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      # Credentials are passed through from the host environment, never written here
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8000
+      ENABLE_SIM: ${ENABLE_SIM:-true}
     volumes:
-      - ./data:/app/data
+      - appdata:/app/data
+      - ${HOST_LOG_DIR:-./data}:/var/log/host:ro
+    stop_grace_period: 15s
     restart: unless-stopped
 
   simulator:
     build:
       context: ./backend
-      dockerfile: Dockerfile
     container_name: accentra-simulator
     command: python -m simulator.generate_logs --file /app/data/app.log --rps 25 --base-error 0.02
     volumes:
-      - ./data:/app/data
+      - appdata:/app/data
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      disable: true
 
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
     container_name: accentra-frontend
     ports:
       - "5173:5173"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
   localstack:
@@ -52,5 +68,8 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=logs,sns
+      - SERVICES=logs,sns,cloudwatch
       - DEFAULT_REGION=ap-south-1
+
+volumes:
+  appdata:

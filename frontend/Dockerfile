@@ -4,37 +4,18 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 COPY . .
 RUN npm run build
 
-# Stage 2: Serve with NGINX
-FROM nginx:alpine
+# Stage 2: Serve with an unprivileged NGINX (runs as uid 101, no root master process)
+FROM nginxinc/nginx-unprivileged:alpine
 
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Custom nginx configuration for SPA routing & reverse proxy
-RUN echo 'server { \
-    listen 5173; \
-    location / { \
-        root /usr/share/nginx/html; \
-        index index.html index.htm; \
-        try_files $uri $uri/ /index.html; \
-    } \
-    location /api/ { \
-        proxy_pass http://backend:8000; \
-        proxy_set_header Host $host; \
-        proxy_set_header X-Real-IP $remote_addr; \
-    } \
-    location /ws { \
-        proxy_pass http://backend:8000; \
-        proxy_http_version 1.1; \
-        proxy_set_header Upgrade $http_upgrade; \
-        proxy_set_header Connection "upgrade"; \
-    } \
-}' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 5173
 
-CMD ["nginx", "-g", "daemon off;"]
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:5173/ > /dev/null || exit 1

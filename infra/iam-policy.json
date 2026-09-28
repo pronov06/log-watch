@@ -6,17 +6,21 @@
       "Action": [
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:DescribeLogStreams"
+        "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:*:*:log-group:/hackathon/log-anomaly-detector*"
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:/hackathon/log-anomaly-detector",
+        "arn:aws:logs:*:*:log-group:/hackathon/log-anomaly-detector:log-stream:*"
+      ],
+      "Sid": "WriteAlertStream"
     },
     {
       "Effect": "Allow",
       "Action": [
         "sns:Publish"
       ],
-      "Resource": "arn:aws:sns:*:*:log-anomaly-alerts"
+      "Resource": "arn:aws:sns:*:*:log-anomaly-alerts",
+      "Sid": "NotifyAlerts"
     },
     {
       "Effect": "Allow",
@@ -28,7 +32,8 @@
         "StringEquals": {
           "cloudwatch:namespace": "LogAnomaly"
         }
-      }
+      },
+      "Sid": "PublishMetrics"
     }
   ]
 }
