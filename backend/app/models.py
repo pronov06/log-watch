@@ -57,6 +57,7 @@ class MetricPoint(BaseModel):
     lower_band: float | None = None
     z: float | None = None
     severity: str = "NONE"
+    ingest_lag_ms_p95: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +101,7 @@ class Alert(BaseModel):
     opened_at: str = ""
     updated_at: str = ""
     resolved_at: str | None = None
+    detection_latency_sec: float | None = None  # first breaching tick → OPENED
     acknowledged: bool = False
     acknowledged_by: str | None = None
     publish_status: dict = Field(default_factory=dict)  # {"cloudwatch": "ok", "sns": "skipped"}

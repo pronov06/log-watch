@@ -87,3 +87,26 @@ async def test_pipeline_e2e_anomaly_and_recovery(tmp_path):
     finally:
         bus.unsubscribe(queue)
         await pipeline.stop()
+
+
+def test_invalid_config_exits_with_readable_message(monkeypatch):
+    from app.config import get_settings
+    monkeypatch.setenv("BASELINE_ALPHA", "2")
+    with pytest.raises(SystemExit) as exc:
+        get_settings()
+    assert "BASELINE_ALPHA" in str(exc.value)
+
+    monkeypatch.delenv("BASELINE_ALPHA")
+    monkeypatch.setenv("Z_LOW", "20")
+    with pytest.raises(SystemExit) as exc:
+        get_settings()
+    assert "Z thresholds must increase" in str(exc.value)
+
+
+def test_json_log_formatter_emits_fields():
+    import json
+    import logging
+    from app.logging_setup import JsonFormatter
+    rec = logging.makeLogRecord({"name": "t", "levelname": "INFO", "msg": "hi %s", "args": ("x",), "alert_id": "a1"})
+    out = json.loads(JsonFormatter().format(rec))
+    assert out["msg"] == "hi x" and out["alert_id"] == "a1" and out["ts"].endswith("Z")

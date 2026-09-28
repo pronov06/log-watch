@@ -17,6 +17,7 @@ export const App: React.FC = () => {
     config,
     connection,
     latestMetric,
+    eventAgeSec,
     acknowledgeAlert,
     triggerSimulation,
   } = useLiveFeed();
@@ -29,6 +30,8 @@ export const App: React.FC = () => {
         config={config}
         onSimulate={triggerSimulation}
         activeAlertCount={activeAlerts.length}
+        eventAgeSec={eventAgeSec}
+        ingestLagMs={latestMetric?.ingest_lag_ms_p95 ?? null}
       />
 
       {/* Main Dashboard Container */}

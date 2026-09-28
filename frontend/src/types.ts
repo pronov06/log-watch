@@ -31,6 +31,7 @@ export interface Alert {
   opened_at: string;
   updated_at: string;
   resolved_at: string | null;
+  detection_latency_sec: number | null;
   acknowledged: boolean;
   acknowledged_by: string | null;
   publish_status: PublishStatus;
@@ -48,6 +49,7 @@ export interface MetricPoint {
   lower_band: number | null;
   z: number | null;
   severity: Severity;
+  ingest_lag_ms_p95: number | null;
 }
 
 export interface BaselineState {

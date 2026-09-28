@@ -24,12 +24,8 @@ from app.pipeline import Pipeline
 from app.publishers.dispatcher import Dispatcher
 from app.publishers.metrics import MetricsReporter
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)-7s [%(name)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
+from app.logging_setup import configure_logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,6 +41,7 @@ async def lifespan(app: FastAPI):
 
     # Start the pipeline
     await pipeline.start()
+    app.state.ready = True
 
     # Start the publisher dispatcher
     dispatcher = Dispatcher(cfg, pipeline.alert_queue, bus=bus)
@@ -76,6 +73,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown: stop producers first, then flush consumers so no alert is lost.
     logger.info("Shutting down...")
+    app.state.ready = False
     await pipeline.stop()
     dispatcher.stop()
     await asyncio.gather(dispatcher_task, return_exceptions=True)
@@ -90,6 +88,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     cfg = get_settings()
+    configure_logging(json_logs=cfg.log_json, level=cfg.app_log_level)
 
     app = FastAPI(
         title="Log Anomaly Detector",
@@ -103,6 +102,7 @@ def create_app() -> FastAPI:
     app.state.bus = EventBus(ring_size=cfg.ring_buffer_size)
     app.state.pipeline = Pipeline(cfg, app.state.bus)
     app.state.start_time = time.time()
+    app.state.ready = False
 
     # CORS
     app.add_middleware(

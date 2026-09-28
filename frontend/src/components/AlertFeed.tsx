@@ -128,6 +128,11 @@ export const AlertFeed: React.FC<AlertFeedProps> = ({ alerts, onAcknowledge }) =
                   >
                     <Clock className="w-3 h-3" />
                     {formatRelativeTime(alert.opened_at)}
+                    {alert.detection_latency_sec != null && (
+                      <span className="text-slate-500" title="First breaching evaluation → alert opened">
+                        · detected in {alert.detection_latency_sec.toFixed(1)}s
+                      </span>
+                    )}
                   </span>
                 </div>
 

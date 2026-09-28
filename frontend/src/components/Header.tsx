@@ -1,6 +1,6 @@
 import React from 'react';
 import { ConnectionStatus, AppConfig } from '../types';
-import { Activity, ShieldAlert, Radio, RefreshCw, AlertTriangle, Cloud } from 'lucide-react';
+import { Activity, ShieldAlert, Radio, RefreshCw, AlertTriangle, Cloud, Timer } from 'lucide-react';
 import { SimControls } from './SimControls';
 
 interface HeaderProps {
@@ -8,14 +8,22 @@ interface HeaderProps {
   config: AppConfig | null;
   onSimulate: (scenario: 'spike' | 'ramp' | 'flood' | 'outage' | 'recover', durationSec?: number, errorRatio?: number) => void;
   activeAlertCount: number;
+  eventAgeSec: number | null;
+  ingestLagMs: number | null;
 }
+
+// Heartbeats arrive every 15 s, metrics every eval tick; > 20 s of silence means a stalled feed.
+const STALE_AFTER_SEC = 20;
 
 export const Header: React.FC<HeaderProps> = ({
   connection,
   config,
   onSimulate,
   activeAlertCount,
+  eventAgeSec,
+  ingestLagMs,
 }) => {
+  const stale = eventAgeSec !== null && eventAgeSec > STALE_AFTER_SEC;
   const getStatusBadge = () => {
     switch (connection) {
       case 'live':
@@ -88,6 +96,19 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300 text-xs font-mono">
           <Cloud className="w-3.5 h-3.5 text-sky-400" />
           <span>{config?.publish_mode === 'aws' ? 'AWS (CW+SNS)' : 'DRY RUN'}</span>
+        </div>
+
+        {/* Freshness: last event age + p95 ingest lag (log line written → in the window) */}
+        <div
+          className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-xs font-mono ${
+            stale ? 'bg-rose-500/10 border-rose-500/40 text-rose-300' : 'bg-slate-800/80 border-slate-700/60 text-slate-300'
+          }`}
+          title="Time since the last server event, and p95 delay from a log line being written to it being analysed"
+          data-testid="freshness"
+        >
+          <Timer className="w-3.5 h-3.5 text-sky-400" />
+          <span>{eventAgeSec === null ? 'no events' : `${eventAgeSec}s ago`}</span>
+          {ingestLagMs !== null && <span className="text-slate-500">· lag p95 {Math.round(ingestLagMs)}ms</span>}
         </div>
 
         {/* Connection status pill */}

@@ -18,7 +18,7 @@ import asyncio
 import logging
 import re
 import time
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timezone
 
 from app.alerts import AlertManager
@@ -84,6 +84,14 @@ class Pipeline:
         self._tasks: list[asyncio.Task] = []
         self._running = False
 
+        # Latency instrumentation (RT2).
+        # Ingest lag = processing time - the event's own timestamp, i.e. how long a line
+        # took from being logged to entering the window (includes the tailer poll interval).
+        self._lags: deque[float] = deque(maxlen=2000)
+        # Detection latency = first breaching tick → OPENED (the confirm-ticks cost).
+        self._breach_started: float | None = None
+        self.last_detect_sec: float | None = None
+
         # Log sampling state
         self._log_counter = 0
         self._last_log_emit = 0.0
@@ -136,6 +144,10 @@ class Pipeline:
             if event is None:
                 continue
 
+            lag = time.time() - event.ts.timestamp()
+            if 0 <= lag < 3600:  # ignore replayed history and skewed/naive local clocks
+                self._lags.append(lag)
+
             # Feed into the sliding window
             normalized_msg = _normalize_message(event.message) if event.level == "ERROR" else ""
             self.window.add(event.level, message=normalized_msg)
@@ -184,6 +196,11 @@ class Pipeline:
 
                 # Update baseline (only if not breaching and no open alert)
                 breaching = bool(result and result.severity > Severity.NONE)
+                tick_at = time.time()
+                if breaching and self._breach_started is None:
+                    self._breach_started = tick_at
+                elif not breaching and not self.alert_manager.has_open_alert():
+                    self._breach_started = None
                 if (
                     reliable
                     and self.baseline.ready
@@ -206,6 +223,7 @@ class Pipeline:
                     "lower_band": baseline_state["lower_band"] if self.baseline.ready else None,
                     "z": round(result.z, 4) if result else None,
                     "severity": result.severity.name if result else "NONE",
+                    "ingest_lag_ms_p95": self._lag_pct(0.95),
                 }
 
                 self.bus.publish("metric", metric_data)
@@ -216,6 +234,9 @@ class Pipeline:
                 # Process alerts
                 top_errors = self.window.top_errors(n=3)
                 for alert_event in self.alert_manager.process(result, top_errors=top_errors):
+                    if alert_event.event == "OPENED" and self._breach_started is not None:
+                        self.last_detect_sec = round(tick_at - self._breach_started, 2)
+                        alert_event.detection_latency_sec = self.last_detect_sec
                     alert_data = alert_event.model_dump()
                     self.bus.publish("alert", alert_data)
                     # Enqueue for publishers
@@ -228,6 +249,22 @@ class Pipeline:
                 break
             except Exception:
                 logger.exception("Evaluator error")
+
+    def _lag_pct(self, q: float) -> float | None:
+        if not self._lags:
+            return None
+        ordered = sorted(self._lags)
+        return round(ordered[min(len(ordered) - 1, int(q * len(ordered)))] * 1000, 1)
+
+    def latency_stats(self) -> dict:
+        cfg = self.cfg
+        return {
+            "ingest_lag_ms_p50": self._lag_pct(0.50),
+            "ingest_lag_ms_p95": self._lag_pct(0.95),
+            "last_detection_latency_sec": self.last_detect_sec,
+            # Worst case from a sustained breach to OPENED on the wire
+            "detection_budget_sec": round(cfg.eval_interval_sec * (cfg.confirm_ticks + 1) + 1, 1),
+        }
 
     async def _baseline_persist_loop(self) -> None:
         """Save the baseline to disk every 60 seconds."""

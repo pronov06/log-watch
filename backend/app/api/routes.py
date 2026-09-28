@@ -21,7 +21,7 @@ import logging
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -72,10 +72,31 @@ async def health(request: Request):
         "lines_read": pipeline.tailer.lines_read,
         "lines_dropped": pipeline.tailer.lines_dropped,
         "sources": pipeline.tailer.files,
+        "latency": pipeline.latency_stats(),
         "parse_failures": parser.parse_failures,
         "publisher": app.state.dispatcher.stats() if getattr(app.state, "dispatcher", None) else None,
         "cw_metrics": app.state.metrics_reporter.stats() if getattr(app.state, "metrics_reporter", None) else None,
     }
+
+
+@router.get("/ready")
+async def ready(request: Request, response: Response):
+    """
+    Readiness: 200 only while the pipeline runs and at least one source is being tailed.
+
+    Liveness (/api/health) stays 200 during warm-up or when no log file exists yet;
+    readiness is what a load balancer or `docker compose` healthcheck should gate on.
+    """
+    app = request.app
+    pipeline = app.state.pipeline
+    checks = {
+        "pipeline_running": bool(getattr(app.state, "ready", False)),
+        "sources_tailed": len(pipeline.tailer.files) > 0,
+        "dispatcher_running": getattr(app.state, "dispatcher", None) is not None,
+    }
+    ok = all(checks.values())
+    response.status_code = 200 if ok else 503
+    return {"ready": ok, "checks": checks, "baseline_ready": pipeline.baseline.ready}
 
 
 @router.get("/config")

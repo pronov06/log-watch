@@ -32,6 +32,8 @@ export function useLiveFeed() {
 
   const lastSeqRef = useRef<number>(0);
   const bootIdRef = useRef<string | null>(null);
+  const lastEventAtRef = useRef<number | null>(null);
+  const [eventAgeSec, setEventAgeSec] = useState<number | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const wsFailuresRef = useRef<number>(0);
   const reconnectTimeoutRef = useRef<number | null>(null);
@@ -69,6 +71,7 @@ export function useLiveFeed() {
   // Process any incoming envelope
   const processEnvelope = useCallback(
     (envelope: Envelope) => {
+      lastEventAtRef.current = Date.now(); // heartbeats count: they prove the pipe is alive
       // A snapshot always re-bases the cursor: after a server restart seq starts
       // again from 0, and every later envelope would otherwise look stale.
       if (envelope.type === 'snapshot') {
@@ -250,6 +253,15 @@ export function useLiveFeed() {
     }
   }, [pollFallback, processEnvelope]);
 
+  // "Last event N s ago" ticker: a live feed that silently stalls is worse than a red badge.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const at = lastEventAtRef.current;
+      setEventAgeSec(at === null ? null : Math.floor((Date.now() - at) / 1000));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Initial hydration via REST
   useEffect(() => {
     isMountedRef.current = true;
@@ -339,6 +351,7 @@ export function useLiveFeed() {
     config,
     connection,
     latestMetric,
+    eventAgeSec,
     acknowledgeAlert,
     triggerSimulation,
   };

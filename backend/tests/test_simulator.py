@@ -56,3 +56,17 @@ def test_sim_endpoint_rejects_bad_input_and_respects_flag(monkeypatch, tmp_path)
     assert client.post("/api/sim/spike", json={"error_ratio": 2}).status_code == 422
     disabled = _client(monkeypatch, tmp_path, enable_sim=False)
     assert disabled.post("/api/sim/spike", json={}).status_code == 403
+
+
+def test_ready_is_503_before_startup_and_200_when_running(monkeypatch, tmp_path):
+    client = _client(monkeypatch, tmp_path)
+    assert client.get("/api/ready").status_code == 503
+    with client:  # runs lifespan: pipeline + dispatcher start
+        import time as _t
+        deadline = _t.time() + 3
+        while _t.time() < deadline and client.get("/api/ready").status_code != 200:
+            _t.sleep(0.1)
+        body = client.get("/api/ready").json()
+        assert body["ready"] is True, body
+        health = client.get("/api/health").json()
+        assert "latency" in health and health["publisher"]["publishers"] == ["console"]
