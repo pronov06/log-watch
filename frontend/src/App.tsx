@@ -58,7 +58,7 @@ export const App: React.FC = () => {
       <footer className="border-t border-line">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-8 py-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
           <span>
-            <span className="font-serif italic text-ink">Accentra</span> — log anomaly detection, built for the hackathon
+            <span className="font-serif italic text-ink">Log Pulse</span> — log anomaly detection, built for the hackathon
           </span>
           <span className="font-mono">
             window {config?.window_seconds ?? 60}s
